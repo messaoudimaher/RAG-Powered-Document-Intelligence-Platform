@@ -1,0 +1,12 @@
+Retrieval-Augmented Generation (RAG) is a technique that enhances large language models (LLMs) by integrating external knowledge sources. Instead of relying solely on the training data of the model, a RAG system retrieves relevant documents or information based on the user's query and appends them to the prompt context.
+
+Key benefits of RAG:
+1. Grounded Answers: By grounding responses in retrieved source documents, RAG minimizes hallucinations.
+2. Fresh Knowledge: External databases can be updated in real time, enabling the LLM to access current information.
+3. Cost Efficiency: Ingesting documents into a vector database is much cheaper and faster than fine-tuning or training LLMs.
+4. Source Attribution: Citations can be attached to answers, allowing users to verify facts.
+
+How embeddings and vector databases work:
+- Text chunks are passed through an embedding model (e.g. nomic-embed-text) to produce dense vector representations.
+- These vectors are stored in specialized vector stores (e.g. ChromaDB) optimized for fast mathematical distance calculations.
+- Cosine distance is commonly used, where a distance closer to 0 indicates higher similarity, and closer to 2 indicates high dissimilarity.
