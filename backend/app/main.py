@@ -1,22 +1,27 @@
-import os
 import logging
+import os
 from contextlib import asynccontextmanager
+
 import httpx
-from fastapi import FastAPI, Depends, File, UploadFile, Form, HTTPException, Security, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Security, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import APIKeyHeader
 from fastapi.responses import RedirectResponse
+from fastapi.security import APIKeyHeader
 
 from app.config import settings
 from app.database import db_manager
-from app.llm_client import llm_client
 from app.ingestion import ingest_document
 from app.retrieval import answer_with_rag
-from app.utils import get_uptime_seconds, fetch_arxiv_paper
 from app.schemas import (
-    QueryRequest, QueryResponse, ArxivIngestRequest, 
-    IngestResponse, HealthResponse, DiagnosticsResponse, DocumentInfo
+    ArxivIngestRequest,
+    DiagnosticsResponse,
+    DocumentInfo,
+    HealthResponse,
+    IngestResponse,
+    QueryRequest,
+    QueryResponse,
 )
+from app.utils import fetch_arxiv_paper, get_uptime_seconds
 
 logger = logging.getLogger("docmind.main")
 
@@ -43,7 +48,7 @@ async def verify_api_key(x_api_key: str = Security(api_key_header)):
 async def lifespan(app: FastAPI):
     # Startup tasks
     logger.info("Initializing DocMind RAG Backend...")
-    
+
     # 1. Verify Chroma DB connection
     try:
         stats = db_manager.get_stats()
@@ -81,7 +86,7 @@ async def lifespan(app: FastAPI):
                         file_type="txt",
                         title="Introduction to RAG Systems"
                     )
-            
+
             # If papers collection is empty, seed it
             if stats["papers_count"] == 0:
                 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -157,13 +162,13 @@ async def readiness():
     """
     chroma_ok = False
     ollama_ok = False
-    
+
     try:
         db_manager.get_stats()
         chroma_ok = True
     except Exception:
         pass
-        
+
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags", timeout=3.0)
@@ -181,7 +186,7 @@ async def readiness():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Service Unavailable. System status: {detail_msg}"
         )
-        
+
     return {"status": "ready"}
 
 @app.get("/api/diagnostics", response_model=DiagnosticsResponse, dependencies=[Depends(verify_api_key)])
@@ -192,7 +197,7 @@ async def diagnostics():
     """
     chroma_ok = False
     ollama_ok = False
-    
+
     try:
         stats = db_manager.get_stats()
         chroma_ok = True
@@ -201,7 +206,7 @@ async def diagnostics():
     except Exception:
         public_count = 0
         papers_count = 0
-        
+
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags", timeout=3.0)
@@ -262,7 +267,7 @@ async def ingest_file(
         logger.exception("Ingestion failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Document ingestion failed: {str(e)}"
+            detail=f"Document ingestion failed: {e!s}"
         )
 
 @app.post("/api/ingest/arxiv", response_model=IngestResponse, dependencies=[Depends(verify_api_key)])
@@ -273,7 +278,7 @@ async def ingest_arxiv(request: ArxivIngestRequest):
     try:
         title, pdf_bytes = await fetch_arxiv_paper(request.arxiv_id)
         file_name = f"arxiv_{request.arxiv_id}.pdf"
-        
+
         result = await ingest_document(
             collection_type=request.collection_type,
             file_name=file_name,
@@ -291,13 +296,13 @@ async def ingest_arxiv(request: ArxivIngestRequest):
     except httpx.HTTPError as e:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to communicate with arXiv services: {str(e)}"
+            detail=f"Failed to communicate with arXiv services: {e!s}"
         )
     except Exception as e:
         logger.exception("arXiv download or ingestion failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"arXiv Ingestion failed: {str(e)}"
+            detail=f"arXiv Ingestion failed: {e!s}"
         )
 
 @app.post("/api/query", response_model=QueryResponse, dependencies=[Depends(verify_api_key)])
@@ -316,7 +321,7 @@ async def query_rag(request: QueryRequest):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="collection_type must be either 'public' or 'papers'."
             )
-            
+
         result = await answer_with_rag(
             collection_type=request.collection_type,
             query=request.query,
@@ -332,10 +337,10 @@ async def query_rag(request: QueryRequest):
         logger.exception("RAG query failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Query request failed: {str(e)}"
+            detail=f"Query request failed: {e!s}"
         )
 
-@app.get("/api/documents", response_model=List[DocumentInfo], dependencies=[Depends(verify_api_key)])
+@app.get("/api/documents", response_model=list[DocumentInfo], dependencies=[Depends(verify_api_key)])
 async def list_documents(collection_type: str):
     """
     Lists unique source documents in a collection and their chunk counts.
@@ -361,7 +366,7 @@ async def list_documents(collection_type: str):
         logger.exception("Failed to retrieve document library")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list documents: {str(e)}"
+            detail=f"Failed to list documents: {e!s}"
         )
 
 @app.delete("/api/documents", dependencies=[Depends(verify_api_key)])
@@ -377,7 +382,7 @@ async def delete_document(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="collection_type must be 'public' or 'papers'."
         )
-    
+
     success = db_manager.delete_document(collection_type, source)
     if not success:
         raise HTTPException(

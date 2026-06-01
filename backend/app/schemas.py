@@ -1,5 +1,6 @@
+
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
+
 
 class QueryRequest(BaseModel):
     collection_type: str = Field(..., description="Target database collection: 'public' or 'papers'")
@@ -20,7 +21,7 @@ class SourceCitation(BaseModel):
 
 class QueryResponse(BaseModel):
     answer: str
-    citations: List[SourceCitation]
+    citations: list[SourceCitation]
     overall_confidence: str
 
 class ArxivIngestRequest(BaseModel):

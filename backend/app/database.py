@@ -1,6 +1,8 @@
 import logging
+
 import chromadb
 from chromadb.config import Settings as ChromaSettings
+
 from app.config import settings
 
 logger = logging.getLogger("docmind.database")
@@ -28,7 +30,7 @@ class DatabaseManager:
                 metadata={"hnsw:space": "cosine"}
             )
             logger.info(f"Initialized collection: {settings.chroma_collection_public}")
-            
+
             self.papers_collection = self.client.get_or_create_collection(
                 name=settings.chroma_collection_name,
                 metadata={"hnsw:space": "cosine"}
@@ -95,13 +97,13 @@ class DatabaseManager:
         including chunk count and overall file metadata.
         """
         collection = self.get_collection(collection_type)
-        
+
         # Retrieve all items (only metadatas to optimize speed/memory)
         # Note: Chroma allows calling get() with empty parameter, but to prevent loading all text
         # we can specify including only metadata.
         result = collection.get(include=["metadatas"])
         metadatas = result.get("metadatas", [])
-        
+
         if not metadatas:
             return []
 

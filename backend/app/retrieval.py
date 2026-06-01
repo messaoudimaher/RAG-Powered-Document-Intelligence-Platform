@@ -1,5 +1,6 @@
 import logging
 import re
+
 from app.config import settings
 from app.database import db_manager
 from app.llm_client import llm_client
@@ -37,7 +38,7 @@ def format_citations(results: dict) -> list[dict]:
 
     for idx in range(len(ids)):
         dist = distances[idx]
-        
+
         # Check threshold if fallback is disabled
         if not settings.enable_fallback_retrieval and dist > settings.relevance_threshold:
             continue
@@ -67,7 +68,7 @@ async def retrieve_baseline(collection_type: str, query: str, limit: int = 5) ->
     query_embeddings = await llm_client.get_embeddings([query])
     if not query_embeddings:
         return []
-    
+
     raw_results = db_manager.query(
         collection_type=collection_type,
         query_embeddings=[query_embeddings[0]],
@@ -81,7 +82,7 @@ async def retrieve_hyde(collection_type: str, query: str, limit: int = 5) -> lis
     Performs HyDE search: LLM generates a hypothetical answer -> Embedded -> Vector search.
     """
     logger.info(f"Executing HyDE retrieval for query: '{query}'")
-    
+
     # Step 1: Generate hypothetical document
     system_prompt = (
         "You are an expert researcher. Write a paragraph that directly and factually "
@@ -117,7 +118,7 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
     3. Perform Reciprocal Rank Fusion (RRF) to merge, rank, and take top N.
     """
     logger.info(f"Executing Multi-Query RRF retrieval for: '{query}'")
-    
+
     # Step 1: Generate query variations
     system_prompt = (
         "You are a search engine optimization expert. Generate exactly 3 alternative search queries "
@@ -129,13 +130,13 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
         system_prompt=system_prompt,
         temperature=0.5
     )
-    
+
     queries = [query]
     for line in variations_text.strip().split("\n"):
         line_clean = re.sub(r'^\d+\.\s*', '', line).strip('"\' ')
         if line_clean:
             queries.append(line_clean)
-            
+
     logger.info(f"Expanded queries: {queries}")
 
     # Step 2: Fetch query embeddings and search
@@ -145,7 +146,7 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
 
     # Retrieve slightly more than limit for each to allow rank fusion depth
     search_depth = max(limit * 2, 10)
-    
+
     # Fetch results for each query in parallel
     results_by_query = []
     for emb in embeddings:
@@ -165,17 +166,17 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
     for query_res in results_by_query:
         if not query_res or not query_res.get("ids") or not query_res["ids"][0]:
             continue
-        
+
         ids = query_res["ids"][0]
         documents = query_res["documents"][0]
         metadatas = query_res["metadatas"][0]
         distances = query_res["distances"][0]
-        
+
         for rank, cid in enumerate(ids):
             # Rank starts at 0, so rank+1
             score = 1.0 / (rrf_constant + (rank + 1))
             chunk_scores[cid] = chunk_scores.get(cid, 0.0) + score
-            
+
             meta = metadatas[rank] or {}
             # Track metadata details and keep a rolling average of distance
             if cid not in chunk_details:
@@ -206,7 +207,7 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
         details = chunk_details[cid]
         # We use the minimum distance achieved across queries as the relevance distance
         best_dist = details["distance_min"]
-        
+
         # Filter if fallback is disabled
         if not settings.enable_fallback_retrieval and best_dist > settings.relevance_threshold:
             continue
@@ -237,11 +238,11 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
     5. Returns both the final grounded answer and the aggregated SourceCitations.
     """
     logger.info(f"Executing FLARE active retrieval for: '{query}'")
-    
+
     # Step 1: Initial Retrieval
     initial_citations = await retrieve_baseline(collection_type, query, limit=limit)
     context_text = "\n\n".join([f"Source: {c['source']} (Confidence: {c['confidence']})\n{c['text']}" for c in initial_citations])
-    
+
     # Step 2: Generate draft answer
     system_prompt = (
         "You are an intelligence analyst. Answer the user question based strictly on the provided context. "
@@ -255,9 +256,9 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
     # Detect bracketed retrieve tags or determine if we need to actively search for anything in the draft
     # Let's extract any [retrieve: ...] tags or ask the LLM to inspect the draft for missing facts.
     citations_dict = {c["id"]: c for c in initial_citations}
-    
+
     retrieve_queries = re.findall(r'\[retrieve:\s*([^\]]+)\]', draft)
-    
+
     # If no explicit brackets, let's double check if there are sentences needing support
     if not retrieve_queries:
         # Factual query verification prompt
@@ -281,17 +282,17 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
         for r_query in retrieve_queries[:2]: # Limit to 2 sub-queries to stay fast
             new_cites = await retrieve_baseline(collection_type, r_query, limit=3)
             all_new_citations.extend(new_cites)
-        
+
         # Merge citations
         for c in all_new_citations:
             citations_dict[c["id"]] = c
-            
+
         # Re-synthesize context
         merged_citations = list(citations_dict.values())
         merged_citations.sort(key=lambda x: x["distance"])
-        
+
         context_text = "\n\n".join([f"Source: {c['source']}\n{c['text']}" for c in merged_citations[:limit]])
-        
+
         # Final answer synthesis
         final_system_prompt = (
             "You are a grounded Q&A system. Synthesize a comprehensive final answer to the user question "
@@ -300,7 +301,7 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
         )
         final_prompt = f"Verified Context:\n{context_text}\n\nQuestion:\n{query}"
         final_answer = await llm_client.generate_completion(prompt=final_prompt, system_prompt=final_system_prompt, temperature=0.2)
-        
+
         return {
             "answer": final_answer,
             "citations": merged_citations[:limit]
@@ -320,7 +321,7 @@ async def answer_with_rag(collection_type: str, query: str, strategy: str = "bas
     Retrieves citations, queries the LLM, and formats the response.
     """
     strategy_clean = strategy.lower().strip()
-    
+
     # 1. Fetch relevant passages based on strategy
     if strategy_clean == "hyde":
         citations = await retrieve_hyde(collection_type, query, limit)

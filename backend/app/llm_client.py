@@ -1,6 +1,8 @@
 import asyncio
 import logging
+
 import httpx
+
 from app.config import settings
 
 logger = logging.getLogger("docmind.llm")
@@ -59,7 +61,7 @@ class LLMClient:
 
             # 2. Fallback to older /api/embeddings in parallel
             embeddings_url = f"{settings.ollama_base_url.rstrip('/')}/api/embeddings"
-            
+
             async def embed_single(text: str) -> list[float]:
                 payload = {
                     "model": settings.ollama_embed_model,
@@ -98,7 +100,7 @@ class LLMClient:
                 }
             }
             headers = {"Content-Type": "application/json"}
-            
+
             try:
                 async with httpx.AsyncClient() as client:
                     response = await self._post_with_retry(client, url, payload, headers=headers)
