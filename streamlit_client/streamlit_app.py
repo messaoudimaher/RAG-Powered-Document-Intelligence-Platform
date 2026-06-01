@@ -1,0 +1,416 @@
+import os
+import streamlit as st
+import httpx
+import pandas as pd
+from datetime import datetime
+
+# Set page configuration
+st.set_page_config(
+    page_title="DocMind Operations Desk",
+    page_icon="🧠",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Read environment variables
+API_BASE_URL = os.environ.get("NEXT_PUBLIC_API_BASE_URL", "http://localhost:8000").rstrip("/")
+
+# ----------------------------------------------------
+# STYLING & GRAPHICS
+# ----------------------------------------------------
+st.markdown("""
+<style>
+    .reportview-container {
+        background: #0e1117;
+    }
+    .main-title {
+        font-family: 'Outfit', 'Inter', sans-serif;
+        color: #f0f2f6;
+        font-weight: 700;
+        font-size: 2.5rem;
+        margin-bottom: 0.2rem;
+        background: -webkit-linear-gradient(45deg, #3b82f6, #06b6d4);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    .sub-title {
+        font-family: 'Inter', sans-serif;
+        color: #9ca3af;
+        font-size: 1rem;
+        margin-bottom: 2rem;
+    }
+    .badge-high {
+        background-color: #065f46;
+        color: #34d399;
+        padding: 0.2rem 0.6rem;
+        border-radius: 9999px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .badge-medium {
+        background-color: #92400e;
+        color: #fbbf24;
+        padding: 0.2rem 0.6rem;
+        border-radius: 9999px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .badge-low {
+        background-color: #7f1d1d;
+        color: #fca5a5;
+        padding: 0.2rem 0.6rem;
+        border-radius: 9999px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .metric-card {
+        background-color: #1f2937;
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #374151;
+        margin-bottom: 1rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ----------------------------------------------------
+# STATE MANAGEMENT
+# ----------------------------------------------------
+if "api_key" not in st.session_state:
+    # Look for API_KEY env variable as default
+    st.session_state.api_key = os.environ.get("API_KEY", "")
+
+# Headers generator
+def get_headers():
+    headers = {}
+    if st.session_state.api_key:
+        headers["X-API-Key"] = st.session_state.api_key
+    return headers
+
+# ----------------------------------------------------
+# SIDEBAR: DIAGNOSTICS & AUTH
+# ----------------------------------------------------
+with st.sidebar:
+    st.markdown("### 🔒 Authentication")
+    st.session_state.api_key = st.text_input(
+        "API Key (X-API-Key)", 
+        value=st.session_state.api_key, 
+        type="password",
+        help="Provide the API security key if the server middleware gate is active."
+    )
+    
+    st.markdown("---")
+    st.markdown("### 🖥️ Diagnostics & Metrics")
+    
+    # Check Server Health
+    health_ok = False
+    diagnostics = {}
+    
+    try:
+        with httpx.Client() as client:
+            diag_resp = client.get(f"{API_BASE_URL}/api/diagnostics", headers=get_headers(), timeout=5.0)
+            if diag_resp.status_code == 200:
+                health_ok = True
+                diagnostics = diag_resp.json()
+            elif diag_resp.status_code == 403:
+                st.error("Invalid API Key. Access forbidden.")
+            else:
+                st.warning(f"Server responded with status code: {diag_resp.status_code}")
+    except Exception as e:
+        st.error(f"Cannot connect to FastAPI backend: {e}")
+        st.caption(f"Configured API URL: {API_BASE_URL}")
+        
+    if health_ok and diagnostics:
+        # Health status indicator
+        status_color = "🟢 Healthy" if diagnostics.get("status") == "healthy" else "🟡 Degraded"
+        st.markdown(f"**System Status:** {status_color}")
+        
+        # Details
+        uptime_sec = diagnostics.get("uptime_seconds", 0)
+        uptime_str = str(datetime.utcfromtimestamp(uptime_sec).strftime('%Hh %Mm %Ss')) if uptime_sec < 86400 else f"{int(uptime_sec // 86400)}d {int((uptime_sec % 86400) // 3600)}h"
+        
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div style="font-size: 0.8rem; color: #9ca3af;">SYSTEM UPTIME</div>
+                <div style="font-size: 1.2rem; font-weight: bold; color: #f3f4f6;">{uptime_str}</div>
+            </div>
+            <div class="metric-card">
+                <div style="font-size: 0.8rem; color: #9ca3af;">PUBLIC COLLECTION</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: #60a5fa;">{diagnostics.get('public_count', 0)} <span style="font-size: 0.8rem; font-weight: normal; color: #9ca3af;">chunks</span></div>
+            </div>
+            <div class="metric-card">
+                <div style="font-size: 0.8rem; color: #9ca3af;">PAPERS COLLECTION</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: #2dd4bf;">{diagnostics.get('papers_count', 0)} <span style="font-size: 0.8rem; font-weight: normal; color: #9ca3af;">chunks</span></div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
+        # Connections
+        st.markdown(f"🤖 **Ollama Connection:** {'🟢 Connected' if diagnostics.get('ollama_connected') else '🔴 Offline'}")
+        st.markdown(f"🗄️ **ChromaDB SQLite:** {'🟢 Mounted' if diagnostics.get('chroma_connected') else '🔴 Error'}")
+        st.caption(f"Git Commit SHA: `{diagnostics.get('git_sha', 'dev')}`")
+        st.caption("DocMind Engine v1.0.0")
+    else:
+        st.markdown("**System Status:** 🔴 Offline")
+        st.caption("Check if FastAPI server is running and API URL is correct.")
+
+# ----------------------------------------------------
+# MAIN HEADER
+# ----------------------------------------------------
+st.markdown('<div class="main-title">DocMind Intelligence Platform</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Local-first grounded Q&A and vector document operations cockpit</div>', unsafe_allow_html=True)
+
+# Create layout tabs
+tab_query, tab_ingest, tab_library = st.tabs(["🔍 RAG Query Workspace", "📥 Document Ingest Panel", "📚 Source File Library"])
+
+# ----------------------------------------------------
+# TAB 1: QUERY WORKSPACE
+# ----------------------------------------------------
+with tab_query:
+    col_opts, col_results = st.columns([1, 2])
+    
+    with col_opts:
+        st.markdown("### ⚙️ Search Configuration")
+        target_collection = st.selectbox(
+            "Collection Selection",
+            options=["public", "papers"],
+            format_func=lambda x: "🌐 Bulk Text (public)" if x == "public" else "📄 PDFs & DOCX (papers)",
+            help="Select the vector database search space."
+        )
+        
+        search_strategy = st.selectbox(
+            "Retrieval Strategy",
+            options=["baseline", "hyde", "multi_query", "flare"],
+            format_func=lambda x: {
+                "baseline": "Vector Similarity (Baseline)",
+                "hyde": "Hypothetical Embedding (HyDE)",
+                "multi_query": "Multi-Query + Rank Fusion (RRF)",
+                "flare": "Active Claim Lookahead (FLARE)"
+            }[x],
+            help="Choose the algorithm used to fetch and synthesize context."
+        )
+        
+        chunk_limit = st.slider(
+            "Max Citations Limit",
+            min_value=1,
+            max_value=15,
+            value=5,
+            help="Maximum number of context chunks retrieved to synthesize the answer."
+        )
+        
+        st.info(
+            "💡 **Strategies:**\n"
+            "- **HyDE** generates a mock answer first to match real doc layouts.\n"
+            "- **Multi-Query** searches 3 variations and merges ranks with Reciprocal Rank Fusion.\n"
+            "- **FLARE** dynamically queries missing details during generation."
+        )
+
+    with col_results:
+        st.markdown("### 💬 Ask the Corpus")
+        user_query = st.text_area(
+            "Query / Question", 
+            placeholder="Type your question here (e.g. 'What is Reciprocal Rank Fusion?')...",
+            height=100
+        )
+        
+        if st.button("Generate Answer", type="primary", use_container_width=True):
+            if not user_query.strip():
+                st.warning("Please enter a query question.")
+            else:
+                with st.spinner("Executing retrieval and synthesis..."):
+                    try:
+                        payload = {
+                            "collection_type": target_collection,
+                            "query": user_query,
+                            "strategy": search_strategy,
+                            "limit": chunk_limit
+                        }
+                        
+                        with httpx.Client() as client:
+                            resp = client.post(
+                                f"{API_BASE_URL}/api/query", 
+                                headers=get_headers(), 
+                                json=payload,
+                                timeout=60.0
+                            )
+                            
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            answer = data.get("answer", "")
+                            citations = data.get("citations", [])
+                            confidence = data.get("overall_confidence", "Low")
+                            
+                            # Render Confidence Indicator
+                            badge_class = f"badge-{confidence.lower()}"
+                            st.markdown(f"#### Grounded Answer (Confidence: <span class='{badge_class}'>{confidence}</span>)", unsafe_allow_html=True)
+                            st.write(answer)
+                            
+                            # Render Source Citations
+                            st.markdown("### 📌 Source Citations")
+                            if not citations:
+                                st.caption("No relevant source citations fetched above threshold.")
+                            else:
+                                for idx, cite in enumerate(citations):
+                                    source_title = cite.get("title") or cite.get("source")
+                                    dist = cite.get("distance", 0)
+                                    cite_conf = cite.get("confidence", "Low")
+                                    cite_badge = f"badge-{cite_conf.lower()}"
+                                    
+                                    with st.expander(f"[{idx+1}] {source_title} (Distance: {dist:.4f} | Confidence: {cite_conf})"):
+                                        st.caption(f"**Source Document:** `{cite.get('source')}` | **Chunk:** {cite.get('chunk_idx', 0) + 1}/{cite.get('total_chunks', 1)}")
+                                        st.markdown(f"*{cite.get('text')}*")
+                        else:
+                            st.error(f"Error {resp.status_code}: {resp.json().get('detail', 'Query failed.')}")
+                    except Exception as e:
+                        st.error(f"Failed to submit query: {e}")
+
+# ----------------------------------------------------
+# TAB 2: INGEST PANEL
+# ----------------------------------------------------
+with tab_ingest:
+    col_ingest_opts, col_ingest_action = st.columns([1, 2])
+    
+    with col_ingest_opts:
+        st.markdown("### ⚙️ Ingestion Settings")
+        ingest_collection = st.selectbox(
+            "Target Ingest Index",
+            options=["public", "papers"],
+            format_func=lambda x: "🌐 Bulk Text (public)" if x == "public" else "📄 PDFs & DOCX (papers)",
+            help="Choose the index to store the vectorized chunks."
+        )
+        st.caption("Max file upload size is set by system configuration (default 15MB).")
+        
+    with col_ingest_action:
+        st.markdown("### 📤 Document Upload")
+        ingest_mode = st.radio("Choose Ingestion Source", ["File Upload (PDF, DOCX, TXT)", "arXiv Research ID"])
+        
+        if ingest_mode == "File Upload (PDF, DOCX, TXT)":
+            uploaded_file = st.file_uploader("Drag & Drop File", type=["pdf", "docx", "txt", "md"])
+            if st.button("Process & Vectorize File", type="primary", use_container_width=True):
+                if not uploaded_file:
+                    st.warning("Please upload a file first.")
+                else:
+                    with st.spinner(f"Ingesting '{uploaded_file.name}'... Please wait."):
+                        try:
+                            files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                            data = {"collection_type": ingest_collection}
+                            
+                            with httpx.Client() as client:
+                                resp = client.post(
+                                    f"{API_BASE_URL}/api/ingest",
+                                    headers=get_headers(),
+                                    data=data,
+                                    files=files,
+                                    timeout=120.0
+                                )
+                                
+                            if resp.status_code == 200:
+                                res_data = resp.json()
+                                st.success(f"Successfully processed document! Vectorized into {res_data.get('chunks_count')} chunks.")
+                                st.balloons()
+                            else:
+                                st.error(f"Ingestion failed ({resp.status_code}): {resp.json().get('detail', 'Unknown error.')}")
+                        except Exception as e:
+                            st.error(f"Failed to ingest file: {e}")
+                            
+        elif ingest_mode == "arXiv Research ID":
+            arxiv_id = st.text_input("arXiv Paper ID", placeholder="e.g. 2305.16300 or 1706.03762")
+            if st.button("Download & Index arXiv Paper", type="primary", use_container_width=True):
+                if not arxiv_id.strip():
+                    st.warning("Please enter a valid arXiv ID.")
+                else:
+                    with st.spinner(f"Downloading and indexing arXiv paper '{arxiv_id}'..."):
+                        try:
+                            payload = {
+                                "arxiv_id": arxiv_id.strip(),
+                                "collection_type": ingest_collection
+                            }
+                            
+                            with httpx.Client() as client:
+                                resp = client.post(
+                                    f"{API_BASE_URL}/api/ingest/arxiv",
+                                    headers=get_headers(),
+                                    json=payload,
+                                    timeout=180.0
+                                )
+                                
+                            if resp.status_code == 200:
+                                res_data = resp.json()
+                                st.success(f"Indexed arXiv Paper: '{res_data.get('title')}' into papers collection ({res_data.get('chunks_count')} chunks).")
+                                st.balloons()
+                            else:
+                                st.error(f"arXiv indexing failed ({resp.status_code}): {resp.json().get('detail', 'Unknown error.')}")
+                        except Exception as e:
+                            st.error(f"Failed to fetch arXiv paper: {e}")
+
+# ----------------------------------------------------
+# TAB 3: SOURCE FILE LIBRARY
+# ----------------------------------------------------
+with tab_library:
+    st.markdown("### 📚 Ingested Documents Registry")
+    lib_collection = st.selectbox(
+        "Library View Collection",
+        options=["public", "papers"],
+        format_func=lambda x: "🌐 Bulk Text (public)" if x == "public" else "📄 PDFs & DOCX (papers)"
+    )
+    
+    # Fetch document list
+    docs = []
+    fetch_ok = False
+    try:
+        with httpx.Client() as client:
+            resp = client.get(
+                f"{API_BASE_URL}/api/documents?collection_type={lib_collection}", 
+                headers=get_headers(), 
+                timeout=10.0
+            )
+            if resp.status_code == 200:
+                docs = resp.json()
+                fetch_ok = True
+            else:
+                st.error(f"Failed to fetch library ({resp.status_code}): {resp.json().get('detail')}")
+    except Exception as e:
+        st.error(f"Error querying library: {e}")
+        
+    if fetch_ok:
+        if not docs:
+            st.info("No documents have been indexed in this collection yet.")
+        else:
+            # Map into DataFrame
+            df = pd.DataFrame(docs)
+            df.columns = ["Source Filename", "Document Title", "Chunk Count", "File Format", "Date Indexed"]
+            
+            # Format date string for readability
+            try:
+                df["Date Indexed"] = df["Date Indexed"].apply(lambda x: datetime.fromisoformat(x).strftime("%Y-%m-%d %H:%M:%S") if x != "unknown" else x)
+            except Exception:
+                pass
+                
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            st.markdown("### 🗑️ Delete Document Index")
+            doc_to_delete = st.selectbox(
+                "Select Document to Remove",
+                options=[d["source"] for d in docs],
+                format_func=lambda x: next((d["title"] for d in docs if d["source"] == x), x)
+            )
+            
+            if st.button("Permanently Remove Document", type="secondary", use_container_width=True):
+                with st.spinner(f"Deleting document '{doc_to_delete}'..."):
+                    try:
+                        with httpx.Client() as client:
+                            del_resp = client.request(
+                                "DELETE",
+                                f"{API_BASE_URL}/api/documents?collection_type={lib_collection}&source={doc_to_delete}",
+                                headers=get_headers(),
+                                timeout=10.0
+                            )
+                        if del_resp.status_code == 200:
+                            st.success(f"Successfully deleted '{doc_to_delete}' from vector store.")
+                            st.rerun()
+                        else:
+                            st.error(f"Failed to delete ({del_resp.status_code}): {del_resp.json().get('detail')}")
+                    except Exception as e:
+                        st.error(f"Failed to delete document: {e}")
