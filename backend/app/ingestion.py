@@ -1,6 +1,7 @@
 import io
 import logging
 from docx import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
 logger = logging.getLogger("docmind.ingestion")
@@ -47,3 +48,15 @@ def extract_text_from_txt(file_bytes: bytes) -> str:
         except Exception as e:
             logger.error(f"Error decoding text file: {e}")
             raise ValueError(f"Failed to decode TXT file: {e}")
+
+def chunk_text(text: str, chunk_size: int = 800, chunk_overlap: int = 100) -> list[str]:
+    """
+    Splits text into chunks using LangChain's RecursiveCharacterTextSplitter.
+    """
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,
+        separators=["\n\n", "\n", " ", ""]
+    )
+    return splitter.split_text(text)
