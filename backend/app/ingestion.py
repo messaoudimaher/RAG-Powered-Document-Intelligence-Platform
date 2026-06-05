@@ -1,5 +1,6 @@
 import io
 import logging
+from docx import Document
 from pypdf import PdfReader
 
 logger = logging.getLogger("docmind.ingestion")
@@ -20,3 +21,16 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
     except Exception as e:
         logger.error(f"Error extracting text from PDF: {e}")
         raise ValueError(f"Failed to parse PDF document: {e}")
+
+def extract_text_from_docx(file_bytes: bytes) -> str:
+    """
+    Extracts text content from DOCX file bytes using python-docx.
+    """
+    try:
+        docx_file = io.BytesIO(file_bytes)
+        doc = Document(docx_file)
+        text_parts = [p.text for p in doc.paragraphs if p.text]
+        return "\n".join(text_parts)
+    except Exception as e:
+        logger.error(f"Error extracting text from DOCX: {e}")
+        raise ValueError(f"Failed to parse DOCX document: {e}")
