@@ -34,3 +34,16 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
     except Exception as e:
         logger.error(f"Error extracting text from DOCX: {e}")
         raise ValueError(f"Failed to parse DOCX document: {e}")
+
+def extract_text_from_txt(file_bytes: bytes) -> str:
+    """
+    Extracts text content from TXT file bytes with decoding fallbacks.
+    """
+    try:
+        return file_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            return file_bytes.decode("latin-1")
+        except Exception as e:
+            logger.error(f"Error decoding text file: {e}")
+            raise ValueError(f"Failed to decode TXT file: {e}")
