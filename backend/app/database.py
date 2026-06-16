@@ -7,16 +7,17 @@ from app.config import settings
 
 logger = logging.getLogger("docmind.database")
 
+
 class DatabaseManager:
     """
     Manages ChromaDB persistent storage, collections creation,
     and basic query operations.
     """
+
     def __init__(self):
         # Initialize Persistent Client
         self.client = chromadb.PersistentClient(
-            path=settings.chroma_persist_dir,
-            settings=ChromaSettings(anonymized_telemetry=False)
+            path=settings.chroma_persist_dir, settings=ChromaSettings(anonymized_telemetry=False)
         )
         self.initialize_collections()
 
@@ -26,14 +27,12 @@ class DatabaseManager:
         """
         try:
             self.public_collection = self.client.get_or_create_collection(
-                name=settings.chroma_collection_public,
-                metadata={"hnsw:space": "cosine"}
+                name=settings.chroma_collection_public, metadata={"hnsw:space": "cosine"}
             )
             logger.info(f"Initialized collection: {settings.chroma_collection_public}")
 
             self.papers_collection = self.client.get_or_create_collection(
-                name=settings.chroma_collection_name,
-                metadata={"hnsw:space": "cosine"}
+                name=settings.chroma_collection_name, metadata={"hnsw:space": "cosine"}
             )
             logger.info(f"Initialized collection: {settings.chroma_collection_name}")
         except Exception as e:
@@ -49,7 +48,9 @@ class DatabaseManager:
         elif collection_type == "papers":
             return self.papers_collection
         else:
-            raise ValueError(f"Unknown collection type: {collection_type}. Use 'public' or 'papers'.")
+            raise ValueError(
+                f"Unknown collection type: {collection_type}. Use 'public' or 'papers'."
+            )
 
     def add_chunks(
         self,
@@ -57,18 +58,13 @@ class DatabaseManager:
         ids: list[str],
         embeddings: list[list[float]],
         metadatas: list[dict],
-        documents: list[str]
+        documents: list[str],
     ):
         """
         Adds vector embeddings and source chunks to the database.
         """
         collection = self.get_collection(collection_type)
-        collection.add(
-            ids=ids,
-            embeddings=embeddings,
-            metadatas=metadatas,
-            documents=documents
-        )
+        collection.add(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
         logger.info(f"Added {len(ids)} chunks to {collection_type} collection.")
 
     def query(
@@ -76,7 +72,7 @@ class DatabaseManager:
         collection_type: str,
         query_embeddings: list[list[float]],
         n_results: int = 5,
-        where: dict = None
+        where: dict | None = None,
     ) -> dict:
         """
         Performs vector search using query embeddings in the selected collection.
@@ -87,7 +83,7 @@ class DatabaseManager:
             query_embeddings=query_embeddings,
             n_results=n_results,
             where=where,
-            include=["documents", "metadatas", "distances"]
+            include=["documents", "metadatas", "distances"],
         )
         return results
 
@@ -146,16 +142,12 @@ class DatabaseManager:
             return {
                 "public_count": self.public_collection.count(),
                 "papers_count": self.papers_collection.count(),
-                "status": "healthy"
+                "status": "healthy",
             }
         except Exception as e:
             logger.error(f"Error getting DB statistics: {e}")
-            return {
-                "public_count": 0,
-                "papers_count": 0,
-                "status": "degraded",
-                "error": str(e)
-            }
+            return {"public_count": 0, "papers_count": 0, "status": "degraded", "error": str(e)}
+
 
 # Global singleton
 db_manager = DatabaseManager()

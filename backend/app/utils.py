@@ -5,20 +5,19 @@ import xml.etree.ElementTree as ET
 import httpx
 
 # Configure basic logging format
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("docmind.utils")
 
 # Global startup tracker
 START_TIME = time.time()
+
 
 def get_uptime_seconds() -> float:
     """
     Returns the server uptime in seconds.
     """
     return time.time() - START_TIME
+
 
 async def fetch_arxiv_paper(arxiv_id: str) -> tuple[str, bytes]:
     """

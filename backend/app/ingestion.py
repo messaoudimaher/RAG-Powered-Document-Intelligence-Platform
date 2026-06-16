@@ -12,6 +12,7 @@ from app.llm_client import llm_client
 
 logger = logging.getLogger("docmind.ingestion")
 
+
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     """
     Extracts text content from PDF file bytes using pypdf.
@@ -20,14 +21,15 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
         pdf_file = io.BytesIO(file_bytes)
         reader = PdfReader(pdf_file)
         text_parts = []
-        for i, page in enumerate(reader.pages):
+        for _, page in enumerate(reader.pages):
             page_text = page.extract_text()
             if page_text:
                 text_parts.append(page_text)
         return "\n\n".join(text_parts)
     except Exception as e:
         logger.error(f"Error extracting text from PDF: {e}")
-        raise ValueError(f"Failed to parse PDF document: {e}")
+        raise ValueError(f"Failed to parse PDF document: {e}") from e
+
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
     """
@@ -40,7 +42,8 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
         return "\n".join(text_parts)
     except Exception as e:
         logger.error(f"Error extracting text from DOCX: {e}")
-        raise ValueError(f"Failed to parse DOCX document: {e}")
+        raise ValueError(f"Failed to parse DOCX document: {e}") from e
+
 
 def extract_text_from_txt(file_bytes: bytes) -> str:
     """
@@ -53,7 +56,8 @@ def extract_text_from_txt(file_bytes: bytes) -> str:
             return file_bytes.decode("latin-1")
         except Exception as e:
             logger.error(f"Error decoding text file: {e}")
-            raise ValueError(f"Failed to decode TXT file: {e}")
+            raise ValueError(f"Failed to decode TXT file: {e}") from e
+
 
 def chunk_text(text: str, chunk_size: int = 800, chunk_overlap: int = 100) -> list[str]:
     """
@@ -63,9 +67,10 @@ def chunk_text(text: str, chunk_size: int = 800, chunk_overlap: int = 100) -> li
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         length_function=len,
-        separators=["\n\n", "\n", " ", ""]
+        separators=["\n\n", "\n", " ", ""],
     )
     return splitter.split_text(text)
+
 
 async def ingest_document(
     collection_type: str,
@@ -74,7 +79,7 @@ async def ingest_document(
     file_type: str,
     chunk_size: int = 800,
     chunk_overlap: int = 100,
-    title: str = None
+    title: str | None = None,
 ) -> dict:
     """
     Coordinates the ingestion pipeline:
@@ -111,13 +116,13 @@ async def ingest_document(
     embeddings = []
     batch_size = 16
     for i in range(0, total_chunks, batch_size):
-        batch_chunks = chunks[i:i+batch_size]
+        batch_chunks = chunks[i : i + batch_size]
         try:
             batch_embeddings = await llm_client.get_embeddings(batch_chunks)
             embeddings.extend(batch_embeddings)
         except Exception as e:
-            logger.error(f"Error generating embeddings for batch {i//batch_size}: {e}")
-            raise RuntimeError(f"Embedding generation failed: {e}")
+            logger.error(f"Error generating embeddings for batch {i // batch_size}: {e}")
+            raise RuntimeError(f"Embedding generation failed: {e}") from e
 
     # 4. Save to ChromaDB
     doc_title = title or file_name
@@ -133,7 +138,7 @@ async def ingest_document(
             "file_type": normalized_type,
             "added_at": added_at_str,
             # Preview is first 100 characters of the chunk for rapid sidebar index view
-            "preview": chunk[:150].replace("\n", " ") + ("..." if len(chunk) > 150 else "")
+            "preview": chunk[:150].replace("\n", " ") + ("..." if len(chunk) > 150 else ""),
         }
         for idx, chunk in enumerate(chunks)
     ]
@@ -143,7 +148,7 @@ async def ingest_document(
         ids=ids,
         embeddings=embeddings,
         metadatas=metadatas,
-        documents=chunks
+        documents=chunks,
     )
 
     return {
@@ -151,5 +156,5 @@ async def ingest_document(
         "title": doc_title,
         "chunks_count": total_chunks,
         "file_type": normalized_type,
-        "status": "success"
+        "status": "success",
     }

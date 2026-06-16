@@ -7,6 +7,7 @@ from app.llm_client import llm_client
 
 logger = logging.getLogger("docmind.retrieval")
 
+
 def calculate_confidence(distance: float) -> str:
     """
     Maps cosine distance to a confidence label:
@@ -20,6 +21,7 @@ def calculate_confidence(distance: float) -> str:
     else:
         return "Low"
 
+
 def format_citations(results: dict) -> list[dict]:
     """
     Formats raw ChromaDB query results into a structured list of SourceCitations.
@@ -29,8 +31,6 @@ def format_citations(results: dict) -> list[dict]:
     if not results or not results.get("ids") or not results["ids"][0]:
         return []
 
-    # ChromaDB queries return lists of lists because we can pass multiple query embeddings.
-    # Since we query one embedding at a time in general, we inspect index 0.
     ids = results["ids"][0]
     documents = results["documents"][0]
     metadatas = results["metadatas"][0]
@@ -44,17 +44,19 @@ def format_citations(results: dict) -> list[dict]:
             continue
 
         meta = metadatas[idx] or {}
-        citations.append({
-            "id": ids[idx],
-            "text": documents[idx],
-            "source": meta.get("source", "unknown"),
-            "title": meta.get("title", "Untitled"),
-            "chunk_idx": meta.get("chunk_idx", 0),
-            "total_chunks": meta.get("total_chunks", 1),
-            "distance": round(dist, 4),
-            "confidence": calculate_confidence(dist),
-            "preview": meta.get("preview", documents[idx][:150])
-        })
+        citations.append(
+            {
+                "id": ids[idx],
+                "text": documents[idx],
+                "source": meta.get("source", "unknown"),
+                "title": meta.get("title", "Untitled"),
+                "chunk_idx": meta.get("chunk_idx", 0),
+                "total_chunks": meta.get("total_chunks", 1),
+                "distance": round(dist, 4),
+                "confidence": calculate_confidence(dist),
+                "preview": meta.get("preview", documents[idx][:150]),
+            }
+        )
 
     # Sort citations by distance ascending (closest first)
     citations.sort(key=lambda x: x["distance"])
@@ -70,9 +72,7 @@ async def retrieve_baseline(collection_type: str, query: str, limit: int = 5) ->
         return []
 
     raw_results = db_manager.query(
-        collection_type=collection_type,
-        query_embeddings=[query_embeddings[0]],
-        n_results=limit
+        collection_type=collection_type, query_embeddings=[query_embeddings[0]], n_results=limit
     )
     return format_citations(raw_results)
 
@@ -92,7 +92,7 @@ async def retrieve_hyde(collection_type: str, query: str, limit: int = 5) -> lis
     hypothetical_doc = await llm_client.generate_completion(
         prompt=f"Generate hypothetical answer for: {query}",
         system_prompt=system_prompt,
-        temperature=0.4
+        temperature=0.4,
     )
     logger.info(f"Generated hypothetical answer: {hypothetical_doc[:100]}...")
 
@@ -103,9 +103,7 @@ async def retrieve_hyde(collection_type: str, query: str, limit: int = 5) -> lis
 
     # Step 3: Vector search
     raw_results = db_manager.query(
-        collection_type=collection_type,
-        query_embeddings=[embeddings[0]],
-        n_results=limit
+        collection_type=collection_type, query_embeddings=[embeddings[0]], n_results=limit
     )
     return format_citations(raw_results)
 
@@ -126,14 +124,12 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
         "one per line, with no labels, numbers, or introductory text."
     )
     variations_text = await llm_client.generate_completion(
-        prompt=f"Queries for: {query}",
-        system_prompt=system_prompt,
-        temperature=0.5
+        prompt=f"Queries for: {query}", system_prompt=system_prompt, temperature=0.5
     )
 
     queries = [query]
     for line in variations_text.strip().split("\n"):
-        line_clean = re.sub(r'^\d+\.\s*', '', line).strip('"\' ')
+        line_clean = re.sub(r"^\d+\.\s*", "", line).strip("\"' ")
         if line_clean:
             queries.append(line_clean)
 
@@ -151,9 +147,7 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
     results_by_query = []
     for emb in embeddings:
         raw_res = db_manager.query(
-            collection_type=collection_type,
-            query_embeddings=[emb],
-            n_results=search_depth
+            collection_type=collection_type, query_embeddings=[emb], n_results=search_depth
         )
         results_by_query.append(raw_res)
 
@@ -161,7 +155,7 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
     # rrf_score = sum(1 / (60 + rank))
     rrf_constant = 60
     chunk_scores = {}  # chunk_id -> rrf_score
-    chunk_details = {} # chunk_id -> {text, source, title, chunk_idx, total_chunks, distance_sum, count, preview}
+    chunk_details = {}  # chunk_id -> {text, source, title, chunk_idx, total_chunks, distance_sum, count, preview}
 
     for query_res in results_by_query:
         if not query_res or not query_res.get("ids") or not query_res["ids"][0]:
@@ -190,11 +184,13 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
                     "distance_sum": distances[rank],
                     "distance_min": distances[rank],
                     "count": 1,
-                    "preview": meta.get("preview", documents[rank][:150])
+                    "preview": meta.get("preview", documents[rank][:150]),
                 }
             else:
                 chunk_details[cid]["distance_sum"] += distances[rank]
-                chunk_details[cid]["distance_min"] = min(chunk_details[cid]["distance_min"], distances[rank])
+                chunk_details[cid]["distance_min"] = min(
+                    chunk_details[cid]["distance_min"], distances[rank]
+                )
                 chunk_details[cid]["count"] += 1
 
     # Step 4: Sort by RRF score descending and take top 'limit'
@@ -212,17 +208,19 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
         if not settings.enable_fallback_retrieval and best_dist > settings.relevance_threshold:
             continue
 
-        citations.append({
-            "id": details["id"],
-            "text": details["text"],
-            "source": details["source"],
-            "title": details["title"],
-            "chunk_idx": details["chunk_idx"],
-            "total_chunks": details["total_chunks"],
-            "distance": round(best_dist, 4),
-            "confidence": calculate_confidence(best_dist),
-            "preview": details["preview"]
-        })
+        citations.append(
+            {
+                "id": details["id"],
+                "text": details["text"],
+                "source": details["source"],
+                "title": details["title"],
+                "chunk_idx": details["chunk_idx"],
+                "total_chunks": details["total_chunks"],
+                "distance": round(best_dist, 4),
+                "confidence": calculate_confidence(best_dist),
+                "preview": details["preview"],
+            }
+        )
 
     return citations
 
@@ -241,7 +239,12 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
 
     # Step 1: Initial Retrieval
     initial_citations = await retrieve_baseline(collection_type, query, limit=limit)
-    context_text = "\n\n".join([f"Source: {c['source']} (Confidence: {c['confidence']})\n{c['text']}" for c in initial_citations])
+    context_text = "\n\n".join(
+        [
+            f"Source: {c['source']} (Confidence: {c['confidence']})\n{c['text']}"
+            for c in initial_citations
+        ]
+    )
 
     # Step 2: Generate draft answer
     system_prompt = (
@@ -249,7 +252,9 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
         "If the context does not contain enough details, write a draft and mark gaps in brackets like [retrieve: specific topic]."
     )
     draft_prompt = f"Context:\n{context_text}\n\nQuestion:\n{query}"
-    draft = await llm_client.generate_completion(prompt=draft_prompt, system_prompt=system_prompt, temperature=0.3)
+    draft = await llm_client.generate_completion(
+        prompt=draft_prompt, system_prompt=system_prompt, temperature=0.3
+    )
     logger.info(f"FLARE Initial Draft:\n{draft}")
 
     # Step 3: Check for information gaps / retrieve tags
@@ -257,7 +262,7 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
     # Let's extract any [retrieve: ...] tags or ask the LLM to inspect the draft for missing facts.
     citations_dict = {c["id"]: c for c in initial_citations}
 
-    retrieve_queries = re.findall(r'\[retrieve:\s*([^\]]+)\]', draft)
+    retrieve_queries = re.findall(r"\[retrieve:\s*([^\]]+)\]", draft)
 
     # If no explicit brackets, let's double check if there are sentences needing support
     if not retrieve_queries:
@@ -270,7 +275,7 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
         ver_text = await llm_client.generate_completion(prompt=verification_prompt, temperature=0.2)
         if "GROUNDED" not in ver_text.upper():
             for line in ver_text.strip().split("\n"):
-                clean_line = re.sub(r'^\d+\.\s*', '', line).strip('"\' ')
+                clean_line = re.sub(r"^\d+\.\s*", "", line).strip("\"' ")
                 if clean_line and len(clean_line) > 5:
                     retrieve_queries.append(clean_line)
 
@@ -279,7 +284,7 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
     # Step 4: Perform secondary retrieval on gaps and merge context
     if retrieve_queries:
         all_new_citations = []
-        for r_query in retrieve_queries[:2]: # Limit to 2 sub-queries to stay fast
+        for r_query in retrieve_queries[:2]:  # Limit to 2 sub-queries to stay fast
             new_cites = await retrieve_baseline(collection_type, r_query, limit=3)
             all_new_citations.extend(new_cites)
 
@@ -291,7 +296,9 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
         merged_citations = list(citations_dict.values())
         merged_citations.sort(key=lambda x: x["distance"])
 
-        context_text = "\n\n".join([f"Source: {c['source']}\n{c['text']}" for c in merged_citations[:limit]])
+        context_text = "\n\n".join(
+            [f"Source: {c['source']}\n{c['text']}" for c in merged_citations[:limit]]
+        )
 
         # Final answer synthesis
         final_system_prompt = (
@@ -300,22 +307,20 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
             "Do not include any [retrieve] bracket tags in your final output."
         )
         final_prompt = f"Verified Context:\n{context_text}\n\nQuestion:\n{query}"
-        final_answer = await llm_client.generate_completion(prompt=final_prompt, system_prompt=final_system_prompt, temperature=0.2)
+        final_answer = await llm_client.generate_completion(
+            prompt=final_prompt, system_prompt=final_system_prompt, temperature=0.2
+        )
 
-        return {
-            "answer": final_answer,
-            "citations": merged_citations[:limit]
-        }
+        return {"answer": final_answer, "citations": merged_citations[:limit]}
     else:
         # Draft is already grounded, just clean up any brackets if present
-        clean_answer = re.sub(r'\[retrieve:\s*([^\]]+)\]', '', draft).strip()
-        return {
-            "answer": clean_answer,
-            "citations": initial_citations
-        }
+        clean_answer = re.sub(r"\[retrieve:\s*([^\]]+)\]", "", draft).strip()
+        return {"answer": clean_answer, "citations": initial_citations}
 
 
-async def answer_with_rag(collection_type: str, query: str, strategy: str = "baseline", limit: int = 5) -> dict:
+async def answer_with_rag(
+    collection_type: str, query: str, strategy: str = "baseline", limit: int = 5
+) -> dict:
     """
     Main entry point for executing RAG queries.
     Retrieves citations, queries the LLM, and formats the response.
@@ -331,7 +336,7 @@ async def answer_with_rag(collection_type: str, query: str, strategy: str = "bas
         answer = await llm_client.generate_completion(
             prompt=f"Context:\n{context}\n\nQuestion:\n{query}",
             system_prompt=system_prompt,
-            temperature=0.2
+            temperature=0.2,
         )
         response_data = {"answer": answer, "citations": citations}
 
@@ -342,7 +347,7 @@ async def answer_with_rag(collection_type: str, query: str, strategy: str = "bas
         answer = await llm_client.generate_completion(
             prompt=f"Context:\n{context}\n\nQuestion:\n{query}",
             system_prompt=system_prompt,
-            temperature=0.2
+            temperature=0.2,
         )
         response_data = {"answer": answer, "citations": citations}
 
@@ -350,21 +355,23 @@ async def answer_with_rag(collection_type: str, query: str, strategy: str = "bas
         # FLARE handles generation and retrieval iteratively in the function
         response_data = await retrieve_flare(collection_type, query, limit)
 
-    else: # baseline
+    else:  # baseline
         citations = await retrieve_baseline(collection_type, query, limit)
         context = "\n\n".join([f"Source: {c['source']}\n{c['text']}" for c in citations])
         system_prompt = "You are a highly analytical assistant. Answer the user question based strictly on the provided context."
         answer = await llm_client.generate_completion(
             prompt=f"Context:\n{context}\n\nQuestion:\n{query}",
             system_prompt=system_prompt,
-            temperature=0.2
+            temperature=0.2,
         )
         response_data = {"answer": answer, "citations": citations}
 
     # Evaluate overall response confidence flag
     # If there are citations, we average their distance, otherwise it is low.
     if response_data["citations"]:
-        avg_distance = sum(c["distance"] for c in response_data["citations"]) / len(response_data["citations"])
+        avg_distance = sum(c["distance"] for c in response_data["citations"]) / len(
+            response_data["citations"]
+        )
         response_data["overall_confidence"] = calculate_confidence(avg_distance)
     else:
         response_data["overall_confidence"] = "Low"
