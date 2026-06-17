@@ -1,3 +1,10 @@
+import {
+  DiagnosticsResponse,
+  DocumentInfo,
+  IngestResponse,
+  QueryResponse,
+} from '../types';
+
 const LOCAL_STORAGE_BASE_URL_KEY = 'docmind_api_base_url';
 const LOCAL_STORAGE_API_KEY_KEY = 'docmind_api_key';
 const DEFAULT_API_BASE_URL = 'http://localhost:8000';
@@ -27,3 +34,84 @@ export function setApiKey(key: string): void {
     window.localStorage.setItem(LOCAL_STORAGE_API_KEY_KEY, key);
   }
 }
+
+// Helper to make fetch requests with auth headers and error handling
+async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const baseUrl = getApiBaseUrl().replace(/\/$/, '');
+  const apiKey = getApiKey();
+  
+  const headers = new Headers(options.headers || {});
+  if (apiKey) {
+    headers.set('X-API-Key', apiKey);
+  }
+  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    let errorMessage = `HTTP error ${response.status}`;
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.detail || errorMessage;
+    } catch {
+      // ignore parsing error, default message stands
+    }
+    throw new Error(errorMessage);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export const api = {
+  async getDiagnostics(): Promise<DiagnosticsResponse> {
+    return fetchJson<DiagnosticsResponse>('/api/diagnostics');
+  },
+
+  async queryRag(payload: {
+    collection_type: 'public' | 'papers';
+    query: string;
+    strategy: 'baseline' | 'hyde' | 'multi_query' | 'flare';
+    limit: number;
+  }): Promise<QueryResponse> {
+    return fetchJson<QueryResponse>('/api/query', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async uploadFile(collection_type: 'public' | 'papers', file: File): Promise<IngestResponse> {
+    const formData = new FormData();
+    formData.append('collection_type', collection_type);
+    formData.append('file', file);
+
+    return fetchJson<IngestResponse>('/api/ingest', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  async ingestArxiv(collection_type: 'public' | 'papers', arxivId: string): Promise<IngestResponse> {
+    return fetchJson<IngestResponse>('/api/ingest/arxiv', {
+      method: 'POST',
+      body: JSON.stringify({
+        arxiv_id: arxivId,
+        collection_type,
+      }),
+    });
+  },
+
+  async listDocuments(collection_type: 'public' | 'papers'): Promise<DocumentInfo[]> {
+    return fetchJson<DocumentInfo[]>(`/api/documents?collection_type=${collection_type}`);
+  },
+
+  async deleteDocument(collection_type: 'public' | 'papers', source: string): Promise<void> {
+    await fetchJson<any>(`/api/documents?collection_type=${collection_type}&source=${encodeURIComponent(source)}`, {
+      method: 'DELETE',
+    });
+  },
+};
