@@ -15,10 +15,19 @@ class DatabaseManager:
     """
 
     def __init__(self):
-        # Initialize Persistent Client
-        self.client = chromadb.PersistentClient(
-            path=settings.chroma_persist_dir, settings=ChromaSettings(anonymized_telemetry=False)
-        )
+        # Initialize client based on environment
+        if settings.chroma_server_host:
+            logger.info(f"Connecting to remote ChromaDB server at http://{settings.chroma_server_host}:{settings.chroma_server_port}...")
+            self.client = chromadb.HttpClient(
+                host=settings.chroma_server_host,
+                port=settings.chroma_server_port,
+                settings=ChromaSettings(anonymized_telemetry=False)
+            )
+        else:
+            logger.info(f"Initializing local persistent ChromaDB SQLite store at {settings.chroma_persist_dir}...")
+            self.client = chromadb.PersistentClient(
+                path=settings.chroma_persist_dir, settings=ChromaSettings(anonymized_telemetry=False)
+            )
         self.initialize_collections()
 
     def initialize_collections(self):

@@ -11,12 +11,14 @@ class Settings(BaseSettings):
     chroma_collection_name: str = Field(
         default="papers_index", validation_alias="CHROMA_COLLECTION_NAME"
     )
+    chroma_server_host: str = Field(default="", validation_alias="CHROMA_SERVER_HOST")
+    chroma_server_port: int = Field(default=8000, validation_alias="CHROMA_SERVER_PORT")
 
     # Ollama configurations
     ollama_base_url: str = Field(
         default="http://localhost:11434", validation_alias="OLLAMA_BASE_URL"
     )
-    ollama_llm_model: str = Field(default="llama3", validation_alias="OLLAMA_LLM_MODEL")
+    ollama_llm_model: str = Field(default="llama3.2", validation_alias="OLLAMA_LLM_MODEL")
     ollama_embed_model: str = Field(
         default="nomic-embed-text", validation_alias="OLLAMA_EMBED_MODEL"
     )
