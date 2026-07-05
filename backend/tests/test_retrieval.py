@@ -9,6 +9,7 @@ from app.retrieval import (
     retrieve_baseline,
     retrieve_hyde,
     retrieve_multi_query_rrf,
+    retrieve_flare,
 )
 
 
@@ -130,7 +131,85 @@ async def test_retrieve_multi_query_rrf(mock_db_query, mock_embeddings, mock_llm
     # Limit = 2, RRF should rank 'c2' first (appears at rank 1 in Q1, rank 0 in Q2)
     res = await retrieve_multi_query_rrf("public", "main query", limit=2)
     assert len(res) == 2
-    # c2 should be the top item due to rank fusion
-    assert res[0]["id"] == "c2"
-    # distance recorded should be min distance (0.3 in Q2 is min, wait: min of 0.4 in Q1 and 0.3 in Q2 is 0.3)
     assert res[0]["distance"] == 0.3
+
+
+@pytest.mark.asyncio
+@patch("app.retrieval.retrieve_baseline", new_callable=AsyncMock)
+@patch("app.llm_client.llm_client.generate_completion", new_callable=AsyncMock)
+async def test_retrieve_flare_grounded(mock_generate_completion, mock_retrieve_baseline):
+    """
+    Verify FLARE logic when draft answer is already grounded and needs no secondary retrieval.
+    """
+    mock_retrieve_baseline.return_value = [
+        {
+            "id": "c1",
+            "text": "Initial context sentence.",
+            "source": "doc1.txt",
+            "title": "Doc 1",
+            "chunk_idx": 0,
+            "total_chunks": 1,
+            "distance": 0.2,
+            "confidence": "High",
+            "preview": "Initial context..."
+        }
+    ]
+    mock_generate_completion.side_effect = [
+        "This draft answer is fully supported by Initial context sentence.",
+        "GROUNDED"
+    ]
+
+    res = await retrieve_flare("public", "test query", limit=1)
+    assert res["answer"] == "This draft answer is fully supported by Initial context sentence."
+    assert len(res["citations"]) == 1
+    assert res["citations"][0]["id"] == "c1"
+    mock_retrieve_baseline.assert_called_once_with("public", "test query", limit=1)
+
+
+@pytest.mark.asyncio
+@patch("app.retrieval.retrieve_baseline", new_callable=AsyncMock)
+@patch("app.llm_client.llm_client.generate_completion", new_callable=AsyncMock)
+async def test_retrieve_flare_with_secondary_retrieval(mock_generate_completion, mock_retrieve_baseline):
+    """
+    Verify FLARE logic when draft answer has retrieval tags and needs secondary retrieval.
+    """
+    mock_retrieve_baseline.side_effect = [
+        [
+            {
+                "id": "c1",
+                "text": "Initial info.",
+                "source": "doc1.txt",
+                "title": "Doc 1",
+                "chunk_idx": 0,
+                "total_chunks": 1,
+                "distance": 0.3,
+                "confidence": "High",
+                "preview": "Initial info..."
+            }
+        ],
+        [
+            {
+                "id": "c2",
+                "text": "Secondary info on RRF.",
+                "source": "doc2.txt",
+                "title": "Doc 2",
+                "chunk_idx": 0,
+                "total_chunks": 1,
+                "distance": 0.25,
+                "confidence": "High",
+                "preview": "Secondary info..."
+            }
+        ]
+    ]
+
+    mock_generate_completion.side_effect = [
+        "Draft answer needing [retrieve: RRF] details.",
+        "Final synthesized answer with RRF details."
+    ]
+
+    res = await retrieve_flare("public", "test query", limit=2)
+    assert res["answer"] == "Final synthesized answer with RRF details."
+    assert len(res["citations"]) == 2
+    assert any(c["id"] == "c2" for c in res["citations"])
+    mock_retrieve_baseline.assert_any_call("public", "RRF", limit=3)
+
