@@ -308,8 +308,43 @@ with tab_ingest:
                                 
                             if resp.status_code == 200:
                                 res_data = resp.json()
-                                st.success(f"Successfully processed document! Vectorized into {res_data.get('chunks_count')} chunks.")
-                                st.balloons()
+                                task_id = res_data.get("task_id")
+                                
+                                import time
+                                status_placeholder = st.empty()
+                                progress_bar = st.progress(0.1)
+                                
+                                while True:
+                                    with httpx.Client() as client:
+                                        status_resp = client.get(
+                                            f"{API_BASE_URL}/api/ingest/status/{task_id}",
+                                            headers=get_headers()
+                                        )
+                                    if status_resp.status_code == 200:
+                                        status_data = status_resp.json()
+                                        task_status = status_data.get("status")
+                                        
+                                        if task_status in ["PENDING", "RECEIVED"]:
+                                            status_placeholder.info("Stage: Task in queue...")
+                                            progress_bar.progress(0.2)
+                                        elif task_status == "STARTED":
+                                            status_placeholder.info("Stage: Parsing and embedding chunks...")
+                                            progress_bar.progress(0.6)
+                                        elif task_status == "SUCCESS":
+                                            progress_bar.progress(1.0)
+                                            result = status_data.get("result") or {}
+                                            status_placeholder.success(f"Successfully processed document! Vectorized into {result.get('chunks_count', 0)} chunks.")
+                                            st.balloons()
+                                            break
+                                        elif task_status == "FAILURE":
+                                            progress_bar.empty()
+                                            status_placeholder.error(f"Ingestion failed: {status_data.get('error')}")
+                                            break
+                                    else:
+                                        progress_bar.empty()
+                                        status_placeholder.error(f"Failed to query task status ({status_resp.status_code})")
+                                        break
+                                    time.sleep(1.5)
                             else:
                                 st.error(f"Ingestion failed ({resp.status_code}): {resp.json().get('detail', 'Unknown error.')}")
                         except Exception as e:
@@ -338,8 +373,43 @@ with tab_ingest:
                                 
                             if resp.status_code == 200:
                                 res_data = resp.json()
-                                st.success(f"Indexed arXiv Paper: '{res_data.get('title')}' into papers collection ({res_data.get('chunks_count')} chunks).")
-                                st.balloons()
+                                task_id = res_data.get("task_id")
+                                
+                                import time
+                                status_placeholder = st.empty()
+                                progress_bar = st.progress(0.1)
+                                
+                                while True:
+                                    with httpx.Client() as client:
+                                        status_resp = client.get(
+                                            f"{API_BASE_URL}/api/ingest/status/{task_id}",
+                                            headers=get_headers()
+                                        )
+                                    if status_resp.status_code == 200:
+                                        status_data = status_resp.json()
+                                        task_status = status_data.get("status")
+                                        
+                                        if task_status in ["PENDING", "RECEIVED"]:
+                                            status_placeholder.info("Stage: Downloading publication from arXiv...")
+                                            progress_bar.progress(0.3)
+                                        elif task_status == "STARTED":
+                                            status_placeholder.info("Stage: Generating chunk vector embeddings...")
+                                            progress_bar.progress(0.7)
+                                        elif task_status == "SUCCESS":
+                                            progress_bar.progress(1.0)
+                                            result = status_data.get("result") or {}
+                                            status_placeholder.success(f"Indexed arXiv Paper: '{result.get('title')}' into papers collection ({result.get('chunks_count', 0)} chunks).")
+                                            st.balloons()
+                                            break
+                                        elif task_status == "FAILURE":
+                                            progress_bar.empty()
+                                            status_placeholder.error(f"arXiv indexing failed: {status_data.get('error')}")
+                                            break
+                                    else:
+                                        progress_bar.empty()
+                                        status_placeholder.error(f"Failed to query task status ({status_resp.status_code})")
+                                        break
+                                    time.sleep(1.5)
                             else:
                                 st.error(f"arXiv indexing failed ({resp.status_code}): {resp.json().get('detail', 'Unknown error.')}")
                         except Exception as e:
