@@ -310,7 +310,7 @@ export default function QueryWorkspace({ activeCollection }: QueryWorkspaceProps
             <div className="space-y-4 animate-fade-in">
               {/* Header Stats */}
               <div className="flex items-center gap-3 border-b border-zinc-800 pb-3">
-                <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">DocMind Output</span>
+                <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">CogniFlow Output</span>
                 {confidence && (
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getConfidenceBadgeColor(confidence)}`}>
                     Confidence: {confidence}

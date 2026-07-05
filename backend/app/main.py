@@ -23,7 +23,7 @@ from app.schemas import (
 )
 from app.utils import fetch_arxiv_paper, get_uptime_seconds
 
-logger = logging.getLogger("docmind.main")
+logger = logging.getLogger("cogniflow.main")
 
 # ----------------------------------------------------
 # 1. API KEY AUTHENTICATION
@@ -49,7 +49,7 @@ async def verify_api_key(x_api_key: str = Security(api_key_header)):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup tasks
-    logger.info("Initializing DocMind RAG Backend...")
+    logger.info("Initializing CogniFlow RAG Backend...")
 
     # 1. Verify Chroma DB connection
     try:
@@ -111,14 +111,14 @@ async def lifespan(app: FastAPI):
 
     yield
     # Shutdown tasks
-    logger.info("Shutting down DocMind RAG Backend...")
+    logger.info("Shutting down CogniFlow RAG Backend...")
 
 
 # ----------------------------------------------------
 # 3. FASTAPI APPLICATION INITIALIZATION
 # ----------------------------------------------------
 app = FastAPI(
-    title="DocMind Platform API",
+    title="CogniFlow Platform API",
     description="Local-first RAG vector engine orchestrator",
     version="1.0.0",
     docs_url=None if settings.disable_openapi else "/docs",
@@ -147,7 +147,7 @@ async def root():
     """
     if not settings.disable_openapi:
         return RedirectResponse(url="/docs")
-    return {"message": "DocMind RAG Platform Backend is running."}
+    return {"message": "CogniFlow RAG Platform Backend is running."}
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -233,7 +233,7 @@ async def diagnostics():
         threshold=settings.relevance_threshold,
         ollama_connected=ollama_ok,
         chroma_connected=chroma_ok,
-        git_sha=settings.docmind_git_sha,
+        git_sha=settings.cogniflow_git_sha,
     )
 
 

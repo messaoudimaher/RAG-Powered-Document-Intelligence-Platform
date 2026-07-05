@@ -5,7 +5,7 @@ from chromadb.config import Settings as ChromaSettings
 
 from app.config import settings
 
-logger = logging.getLogger("docmind.database")
+logger = logging.getLogger("cogniflow.database")
 
 
 class DatabaseManager:

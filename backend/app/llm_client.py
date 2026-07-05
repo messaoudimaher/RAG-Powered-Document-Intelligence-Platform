@@ -5,7 +5,7 @@ import httpx
 
 from app.config import settings
 
-logger = logging.getLogger("docmind.llm")
+logger = logging.getLogger("cogniflow.llm")
 
 
 class LLMClient:

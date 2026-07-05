@@ -1,7 +1,7 @@
 [project]
-name = "docmind-backend"
+name = "cogniflow-backend"
 version = "0.1.0"
-description = "RAG-Powered Document Intelligence Platform Backend"
+description = "CogniFlow RAG-Powered Document Intelligence Platform Backend"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

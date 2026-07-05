@@ -6,7 +6,7 @@ from datetime import datetime
 
 # Set page configuration
 st.set_page_config(
-    page_title="DocMind Operations Desk",
+    page_title="CogniFlow Operations Desk",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -151,7 +151,7 @@ with st.sidebar:
         st.markdown(f"🤖 **Ollama Connection:** {'🟢 Connected' if diagnostics.get('ollama_connected') else '🔴 Offline'}")
         st.markdown(f"🗄️ **ChromaDB SQLite:** {'🟢 Mounted' if diagnostics.get('chroma_connected') else '🔴 Error'}")
         st.caption(f"Git Commit SHA: `{diagnostics.get('git_sha', 'dev')}`")
-        st.caption("DocMind Engine v1.0.0")
+        st.caption("CogniFlow Engine v1.0.0")
     else:
         st.markdown("**System Status:** 🔴 Offline")
         st.caption("Check if FastAPI server is running and API URL is correct.")
@@ -159,7 +159,7 @@ with st.sidebar:
 # ----------------------------------------------------
 # MAIN HEADER
 # ----------------------------------------------------
-st.markdown('<div class="main-title">DocMind Intelligence Platform</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">CogniFlow Intelligence Platform</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Local-first grounded Q&A and vector document operations cockpit</div>', unsafe_allow_html=True)
 
 # Create layout tabs

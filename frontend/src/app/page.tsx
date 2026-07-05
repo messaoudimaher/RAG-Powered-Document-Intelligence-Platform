@@ -35,7 +35,7 @@ export default function Home() {
           </div>
           <div>
             <h1 className="text-base font-extrabold tracking-tight text-white flex items-center gap-1.5">
-              DocMind
+              CogniFlow
               <span className="text-xs font-semibold text-zinc-500 font-mono select-none">//</span>
               <span className="text-xs font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">RAG Engine</span>
             </h1>
@@ -94,7 +94,7 @@ export default function Home() {
 
       {/* Footer Status Bar */}
       <footer className="border-t border-zinc-900 bg-zinc-950/20 py-3.5 px-6 flex items-center justify-between text-[11px] text-zinc-500 font-medium">
-        <span>© 2026 DocMind Intelligent Systems. Offline Ollama Localhost.</span>
+        <span>© 2026 CogniFlow Intelligent Systems. Offline Ollama Localhost.</span>
         <span className="flex items-center gap-1 text-[10px]">
           Built with <Heart className="w-3 h-3 text-red-500 fill-red-500" /> & Antigravity
         </span>

@@ -5,8 +5,8 @@ import {
   QueryResponse,
 } from '../types';
 
-const LOCAL_STORAGE_BASE_URL_KEY = 'docmind_api_base_url';
-const LOCAL_STORAGE_API_KEY_KEY = 'docmind_api_key';
+const LOCAL_STORAGE_BASE_URL_KEY = 'cogniflow_api_base_url';
+const LOCAL_STORAGE_API_KEY_KEY = 'cogniflow_api_key';
 const DEFAULT_API_BASE_URL = 'http://localhost:8000';
 
 export function getApiBaseUrl(): string {

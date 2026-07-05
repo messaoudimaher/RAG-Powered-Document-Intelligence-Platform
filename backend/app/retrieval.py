@@ -5,7 +5,7 @@ from app.config import settings
 from app.database import db_manager
 from app.llm_client import llm_client
 
-logger = logging.getLogger("docmind.retrieval")
+logger = logging.getLogger("cogniflow.retrieval")
 
 
 def calculate_confidence(distance: float) -> str:

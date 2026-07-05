@@ -5,7 +5,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: docmind_backend
+    container_name: cogniflow_backend
     ports:
       - "8000:8000"
     volumes:
@@ -24,7 +24,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: docmind_frontend
+    container_name: cogniflow_frontend
     ports:
       - "3000:3000"
     environment:
@@ -37,7 +37,7 @@ services:
     build:
       context: ./streamlit_client
       dockerfile: Dockerfile
-    container_name: docmind_streamlit
+    container_name: cogniflow_streamlit
     ports:
       - "8501:8501"
     environment:

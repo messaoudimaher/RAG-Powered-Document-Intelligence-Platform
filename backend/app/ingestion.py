@@ -10,7 +10,7 @@ from pypdf import PdfReader
 from app.database import db_manager
 from app.llm_client import llm_client
 
-logger = logging.getLogger("docmind.ingestion")
+logger = logging.getLogger("cogniflow.ingestion")
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:

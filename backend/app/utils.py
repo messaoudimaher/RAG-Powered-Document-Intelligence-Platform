@@ -6,7 +6,7 @@ import httpx
 
 # Configure basic logging format
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-logger = logging.getLogger("docmind.utils")
+logger = logging.getLogger("cogniflow.utils")
 
 # Global startup tracker
 START_TIME = time.time()

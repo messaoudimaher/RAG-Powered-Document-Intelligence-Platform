@@ -13,8 +13,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DocMind RAG Platform",
-  description: "Premium Local-First RAG Document Intelligence Engine",
+  title: "CogniFlow RAG Platform",
+  description: "CogniFlow - Premium Local-First RAG Document Intelligence Engine",
 };
 
 export default function RootLayout({

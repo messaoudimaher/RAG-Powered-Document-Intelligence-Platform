@@ -38,7 +38,7 @@ class Settings(BaseSettings):
         default="http://export.arxiv.org/api", validation_alias="ARXIV_BASE_URL"
     )
     disable_openapi: bool = Field(default=False, validation_alias="DISABLE_OPENAPI")
-    docmind_git_sha: str = Field(default="dev", validation_alias="DOCMIND_GIT_SHA")
+    cogniflow_git_sha: str = Field(default="dev", validation_alias="COGNIFLOW_GIT_SHA")
 
     # Minimum relevance threshold (cosine distance threshold)
     # Cosine distance range is 0 to 2 (0: identical, 1: orthogonal, 2: opposite).

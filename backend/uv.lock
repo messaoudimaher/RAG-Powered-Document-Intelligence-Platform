@@ -501,7 +501,7 @@ wheels = [
 ]
 
 [[package]]
-name = "docmind-backend"
+name = "cogniflow-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

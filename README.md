@@ -1,6 +1,6 @@
-# DocMind // Local-First RAG-Powered Document Intelligence Platform
+# CogniFlow // Local-First RAG-Powered Document Intelligence Platform
 
-DocMind is a robust, local-first Retrieval-Augmented Generation (RAG) platform. It parses documents (PDF, DOCX, TXT, MD), indexes them using local embeddings with Ollama, stores them in ChromaDB, and performs high-reasoning query synthesis using a customizable switchboard of either local LLMs or optional cloud APIs.
+CogniFlow is a robust, local-first Retrieval-Augmented Generation (RAG) platform. It parses documents (PDF, DOCX, TXT, MD), indexes them using local embeddings with Ollama, stores them in ChromaDB, and performs high-reasoning query synthesis using a customizable switchboard of either local LLMs or optional cloud APIs.
 
 The system features two user clients:
 1. **Next.js 15 Dashboard**: A premium, dark-themed, glassmorphic operations console displaying real-time server diagnostics, document libraries, search expansion strategy selectors, and citation previews.

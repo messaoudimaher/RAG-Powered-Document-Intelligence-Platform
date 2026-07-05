@@ -138,7 +138,7 @@ export default function Diagnostics({ onRefreshTrigger = 0, onConfigChange }: Di
         <div className="glass-panel p-4 rounded-xl border border-red-500/20 text-red-400 flex flex-col gap-2">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <AlertCircle className="w-4 h-4" />
-            DocMind Offline
+            CogniFlow Offline
           </div>
           <p className="text-xs text-zinc-400">
             Cannot reach FastAPI backend server. {error}. Ensure your backend server is active at {getApiBaseUrl()}.
