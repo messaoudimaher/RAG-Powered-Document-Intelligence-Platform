@@ -200,6 +200,13 @@ with tab_query:
             help="Maximum number of context chunks retrieved to synthesize the answer."
         )
         
+        enable_rerank = st.checkbox(
+            "Enable BGE Re-ranking",
+            value=False,
+            disabled=(search_strategy == "flare"),
+            help="Performs a secondary neural cross-encoder re-ranking pass on the retrieved document chunks."
+        )
+        
         st.info(
             "💡 **Strategies:**\n"
             "- **HyDE** generates a mock answer first to match real doc layouts.\n"
@@ -225,7 +232,8 @@ with tab_query:
                             "collection_type": target_collection,
                             "query": user_query,
                             "strategy": search_strategy,
-                            "limit": chunk_limit
+                            "limit": chunk_limit,
+                            "rerank": enable_rerank and search_strategy != "flare"
                         }
                         
                         with httpx.Client() as client:
