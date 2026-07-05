@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0", validation_alias="REDIS_URL")
     enable_reranking: bool = Field(default=False, validation_alias="ENABLE_RERANKING")
     reranker_model: str = Field(default="BAAI/bge-reranker-base", validation_alias="RERANKER_MODEL")
+    jwt_secret_key: str = Field(default="cogniflow-super-secret-key-change-in-production", validation_alias="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", validation_alias="JWT_ALGORITHM")
+    jwt_access_token_expire_minutes: int = Field(default=1440, validation_alias="JWT_ACCESS_TOKEN_EXPIRE_MINUTES")
 
     # Ollama configurations
     ollama_base_url: str = Field(
