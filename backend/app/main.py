@@ -9,6 +9,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import APIKeyHeader
 
 from app.config import settings
+import uuid
 from app.database import db_manager
 from app.ingestion import ingest_document
 from app.retrieval import answer_with_rag
@@ -18,9 +19,12 @@ from app.schemas import (
     DocumentInfo,
     HealthResponse,
     IngestResponse,
+    IngestTaskResponse,
+    TaskStatusResponse,
     QueryRequest,
     QueryResponse,
 )
+from app.celery_app import celery_app, ingest_file_task, ingest_arxiv_task
 from app.utils import fetch_arxiv_paper, get_uptime_seconds
 
 logger = logging.getLogger("cogniflow.main")
@@ -240,7 +244,7 @@ async def diagnostics():
 # ----------------------------------------------------
 # 5. DATA INGESTION & QUERY ENDPOINTS (PROTECTED)
 # ----------------------------------------------------
-@app.post("/api/ingest", response_model=IngestResponse, dependencies=[Depends(verify_api_key)])
+@app.post("/api/ingest", response_model=IngestTaskResponse, dependencies=[Depends(verify_api_key)])
 async def ingest_file(
     collection_type: str = Form(
         ..., description="Target database collection: 'public' or 'papers'"
@@ -248,7 +252,7 @@ async def ingest_file(
     file: UploadFile = File(...),
 ):
     """
-    Ingests and vectorizes uploaded PDF, DOCX, or TXT document.
+    Ingests and vectorizes uploaded PDF, DOCX, or TXT document asynchronously via Celery.
     """
     # Verify file size
     file_bytes = await file.read()
@@ -259,66 +263,107 @@ async def ingest_file(
             detail=f"File exceeds maximum upload size of {settings.max_file_size_mb}MB.",
         )
 
-    # Ingest document
+    # Ensure uploads directory exists inside persistent backend/data/uploads volume
+    uploads_dir = os.path.join(os.path.dirname(settings.chroma_persist_dir), "uploads")
+    os.makedirs(uploads_dir, exist_ok=True)
+
+    # Save uploaded file temporarily to shared volume path
     file_ext = os.path.splitext(file.filename)[1].lstrip(".")
+    temp_filename = f"{uuid.uuid4()}.{file_ext}"
+    temp_filepath = os.path.join(uploads_dir, temp_filename)
+    
     try:
-        result = await ingest_document(
-            collection_type=collection_type,
-            file_name=file.filename,
-            file_bytes=file_bytes,
-            file_type=file_ext,
-        )
-        return IngestResponse(
-            source=result["source"],
-            title=result["title"],
-            chunks_count=result["chunks_count"],
-            file_type=result["file_type"],
-            status=result["status"],
-        )
+        with open(temp_filepath, "wb") as f:
+            f.write(file_bytes)
     except Exception as e:
-        logger.exception("Ingestion failed")
+        logger.error(f"Failed to write temporary upload file: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Document ingestion failed: {e!s}",
-        ) from e
+            detail=f"Failed to initialize temporary staging file: {e}",
+        )
+
+    # Dispatch ingestion worker task
+    try:
+        task = ingest_file_task.delay(collection_type, file.filename, temp_filepath, file_ext)
+        return IngestTaskResponse(
+            task_id=task.id,
+            status="processing",
+            source=file.filename,
+        )
+    except Exception as e:
+        logger.exception("Failed to dispatch Celery ingestion task")
+        if os.path.exists(temp_filepath):
+            os.remove(temp_filepath)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Background task dispatch failed: {e!s}",
+        )
 
 
 @app.post(
-    "/api/ingest/arxiv", response_model=IngestResponse, dependencies=[Depends(verify_api_key)]
+    "/api/ingest/arxiv", response_model=IngestTaskResponse, dependencies=[Depends(verify_api_key)]
 )
 async def ingest_arxiv(request: ArxivIngestRequest):
     """
-    Fetches a scientific publication from arXiv by ID, parses, embeds and indexes.
+    Fetches a scientific publication from arXiv by ID, parses, embeds and indexes in background.
     """
     try:
-        title, pdf_bytes = await fetch_arxiv_paper(request.arxiv_id)
-        file_name = f"arxiv_{request.arxiv_id}.pdf"
-
-        result = await ingest_document(
-            collection_type=request.collection_type,
-            file_name=file_name,
-            file_bytes=pdf_bytes,
-            file_type="pdf",
-            title=title,
+        task = ingest_arxiv_task.delay(request.collection_type, request.arxiv_id)
+        return IngestTaskResponse(
+            task_id=task.id,
+            status="processing",
+            source=f"arxiv_{request.arxiv_id}.pdf"
         )
-        return IngestResponse(
-            source=result["source"],
-            title=result["title"],
-            chunks_count=result["chunks_count"],
-            file_type=result["file_type"],
-            status=result["status"],
-        )
-    except httpx.HTTPError as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to communicate with arXiv services: {e!s}",
-        ) from e
     except Exception as e:
-        logger.exception("arXiv download or ingestion failed")
+        logger.exception("arXiv background task dispatch failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"arXiv Ingestion failed: {e!s}",
-        ) from e
+            detail=f"arXiv background task dispatch failed: {e!s}",
+        )
+
+
+@app.get(
+    "/api/ingest/status/{task_id}",
+    response_model=TaskStatusResponse,
+    dependencies=[Depends(verify_api_key)],
+)
+async def get_task_status(task_id: str):
+    """
+    Retrieves the status and result of a background Celery ingestion task.
+    """
+    try:
+        res = celery_app.AsyncResult(task_id)
+        status_str = res.status
+        
+        # Format response
+        result_data = None
+        error_msg = None
+        
+        if res.successful():
+            val = res.result
+            if isinstance(val, dict):
+                result_data = IngestResponse(
+                    source=val.get("source", ""),
+                    title=val.get("title", ""),
+                    chunks_count=val.get("chunks_count", 0),
+                    file_type=val.get("file_type", ""),
+                    status=val.get("status", "success")
+                )
+        elif res.failed():
+            error_msg = str(res.info)
+            
+        return TaskStatusResponse(
+            task_id=task_id,
+            status=status_str,
+            result=result_data,
+            error=error_msg
+        )
+    except Exception as e:
+        logger.exception(f"Failed to query task status for {task_id}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to query background task status: {e!s}",
+        )
 
 
 @app.post("/api/query", response_model=QueryResponse, dependencies=[Depends(verify_api_key)])

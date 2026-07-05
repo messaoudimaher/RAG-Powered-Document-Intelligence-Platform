@@ -36,6 +36,19 @@ class IngestResponse(BaseModel):
     status: str
 
 
+class IngestTaskResponse(BaseModel):
+    task_id: str
+    status: str
+    source: str
+
+
+class TaskStatusResponse(BaseModel):
+    task_id: str
+    status: str
+    result: IngestResponse | None = None
+    error: str | None = None
+
+
 class QueryRequest(BaseModel):
     collection_type: str = Field(
         ..., description="Target database collection: 'public' or 'papers'"
