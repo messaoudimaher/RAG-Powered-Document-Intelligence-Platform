@@ -79,6 +79,7 @@ export const api = {
     query: string;
     strategy: 'baseline' | 'hyde' | 'multi_query' | 'flare';
     limit: number;
+    rerank?: boolean;
   }): Promise<QueryResponse> {
     return fetchJson<QueryResponse>('/api/query', {
       method: 'POST',

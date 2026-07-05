@@ -47,6 +47,7 @@ export interface QueryRequest {
   query: string;
   strategy: string;
   limit: number;
+  rerank?: boolean;
 }
 
 export interface SourceCitation {

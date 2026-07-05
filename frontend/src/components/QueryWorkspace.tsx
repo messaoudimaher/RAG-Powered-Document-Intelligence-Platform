@@ -24,6 +24,7 @@ export default function QueryWorkspace({ activeCollection }: QueryWorkspaceProps
   const [query, setQuery] = useState('');
   const [strategy, setStrategy] = useState<'baseline' | 'hyde' | 'multi_query' | 'flare'>('baseline');
   const [limit, setLimit] = useState(5);
+  const [rerank, setRerank] = useState(false);
   
   // Results states
   const [loading, setLoading] = useState(false);
@@ -51,7 +52,8 @@ export default function QueryWorkspace({ activeCollection }: QueryWorkspaceProps
         collection_type: activeCollection,
         query: cleanQuery,
         strategy: strategy,
-        limit: limit
+        limit: limit,
+        rerank: rerank && strategy !== 'flare'
       });
 
       setAnswer(res.answer);
@@ -266,19 +268,39 @@ export default function QueryWorkspace({ activeCollection }: QueryWorkspaceProps
           </button>
         </div>
 
-        {/* Limit retrieval size */}
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-zinc-500 font-medium">Citations:</span>
-          <select
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
-            className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-2.5 py-1 rounded-lg focus:outline-none"
+        {/* Limit retrieval size and Re-ranking toggle */}
+        <div className="flex items-center gap-5 text-xs">
+          <label 
+            className={`flex items-center gap-2 select-none text-zinc-400 ${
+              strategy === 'flare' 
+                ? 'opacity-40 cursor-not-allowed' 
+                : 'cursor-pointer hover:text-zinc-200'
+            }`}
+            title={strategy === 'flare' ? 'Re-ranking not supported with active FLARE strategy' : 'Enable BAAI/bge-reranker-base re-ranking'}
           >
-            <option value={3}>3 chunks</option>
-            <option value={5}>5 chunks</option>
-            <option value={8}>8 chunks</option>
-            <option value={12}>12 chunks</option>
-          </select>
+            <input
+              type="checkbox"
+              checked={rerank && strategy !== 'flare'}
+              onChange={(e) => setRerank(e.target.checked)}
+              disabled={strategy === 'flare'}
+              className="accent-indigo-500 cursor-pointer disabled:cursor-not-allowed"
+            />
+            <span className="font-semibold">BGE Re-ranking</span>
+          </label>
+
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-500 font-medium">Citations:</span>
+            <select
+              value={limit}
+              onChange={(e) => setLimit(Number(e.target.value))}
+              className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-2.5 py-1 rounded-lg focus:outline-none"
+            >
+              <option value={3}>3 chunks</option>
+              <option value={5}>5 chunks</option>
+              <option value={8}>8 chunks</option>
+              <option value={12}>12 chunks</option>
+            </select>
+          </div>
         </div>
       </div>
 
