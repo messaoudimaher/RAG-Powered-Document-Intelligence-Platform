@@ -19,6 +19,7 @@ def init_auth_db():
     """
     Initializes the SQLite user database table.
     """
+    conn = None
     try:
         os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
         conn = sqlite3.connect(DATABASE_PATH)
@@ -33,11 +34,13 @@ def init_auth_db():
             """
         )
         conn.commit()
-        conn.close()
         logger.info(f"Initialized auth SQLite database successfully at: {DATABASE_PATH}")
     except Exception as e:
         logger.error(f"Failed to initialize SQLite auth database: {e}")
         raise
+    finally:
+        if conn:
+            conn.close()
 
 
 def hash_password(password: str) -> tuple[str, str]:
@@ -61,37 +64,51 @@ def create_user(username: str, password: str) -> bool:
     """
     Creates a new user inside the SQLite database.
     """
+    username_clean = username.strip()
+    if not username_clean or len(username_clean) < 3:
+        logger.warning(f"Registration failed: invalid or too short username '{username_clean}'")
+        return False
+    if not password or len(password) < 4:
+        logger.warning(f"Registration failed: password too short for '{username_clean}'")
+        return False
+
+    conn = None
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+        cursor.execute("SELECT 1 FROM users WHERE username = ?", (username_clean,))
         if cursor.fetchone():
-            conn.close()
             return False
 
         password_hash, salt = hash_password(password)
         cursor.execute(
             "INSERT INTO users (username, password_hash, salt) VALUES (?, ?, ?)",
-            (username, password_hash, salt)
+            (username_clean, password_hash, salt)
         )
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
         logger.error(f"Error during create_user operation: {e}")
         return False
+    finally:
+        if conn:
+            conn.close()
 
 
 def authenticate_user(username: str, password: str) -> bool:
     """
     Validates user credentials against stored hash.
     """
+    username_clean = username.strip()
+    if not username_clean or not password:
+        return False
+
+    conn = None
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT password_hash, salt FROM users WHERE username = ?", (username,))
+        cursor.execute("SELECT password_hash, salt FROM users WHERE username = ?", (username_clean,))
         row = cursor.fetchone()
-        conn.close()
         if not row:
             return False
         
@@ -100,6 +117,9 @@ def authenticate_user(username: str, password: str) -> bool:
     except Exception as e:
         logger.error(f"Error during authenticate_user: {e}")
         return False
+    finally:
+        if conn:
+            conn.close()
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:

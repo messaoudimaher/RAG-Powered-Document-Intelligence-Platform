@@ -3,10 +3,9 @@ import os
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Security, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from fastapi.security import APIKeyHeader
 
 from app.config import settings
 import uuid
@@ -37,23 +36,6 @@ from app.auth import (
 )
 
 logger = logging.getLogger("cogniflow.main")
-
-# ----------------------------------------------------
-# 1. API KEY AUTHENTICATION
-# ----------------------------------------------------
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-
-async def verify_api_key(x_api_key: str = Security(api_key_header)):
-    """
-    Verifies the client API key header if the API_KEY environment variable is configured.
-    """
-    if settings.api_key and x_api_key != settings.api_key:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Forbidden: Invalid or missing X-API-Key header.",
-        )
-    return x_api_key
 
 
 # ----------------------------------------------------
