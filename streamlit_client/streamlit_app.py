@@ -76,15 +76,16 @@ st.markdown("""
 # ----------------------------------------------------
 # STATE MANAGEMENT
 # ----------------------------------------------------
-if "api_key" not in st.session_state:
-    # Look for API_KEY env variable as default
-    st.session_state.api_key = os.environ.get("API_KEY", "")
+if "auth_token" not in st.session_state:
+    st.session_state.auth_token = ""
+if "username" not in st.session_state:
+    st.session_state.username = ""
 
 # Headers generator
 def get_headers():
     headers = {}
-    if st.session_state.api_key:
-        headers["X-API-Key"] = st.session_state.api_key
+    if st.session_state.auth_token:
+        headers["Authorization"] = f"Bearer {st.session_state.auth_token}"
     return headers
 
 # ----------------------------------------------------
@@ -92,12 +93,56 @@ def get_headers():
 # ----------------------------------------------------
 with st.sidebar:
     st.markdown("### 🔒 Authentication")
-    st.session_state.api_key = st.text_input(
-        "API Key (X-API-Key)", 
-        value=st.session_state.api_key, 
-        type="password",
-        help="Provide the API security key if the server middleware gate is active."
-    )
+    
+    if st.session_state.auth_token:
+        st.success(f"Logged in as: **{st.session_state.username}**")
+        if st.button("Logout", use_container_width=True):
+            st.session_state.auth_token = ""
+            st.session_state.username = ""
+            st.rerun()
+    else:
+        auth_mode = st.radio("Access Mode", ["Sign In", "Create Account"])
+        username = st.text_input("Username", key="auth_username")
+        password = st.text_input("Password", type="password", key="auth_password")
+        
+        if auth_mode == "Sign In":
+            if st.button("Login", type="primary", use_container_width=True):
+                if not username or not password:
+                    st.warning("Please provide username and password.")
+                else:
+                    try:
+                        with httpx.Client() as client:
+                            resp = client.post(
+                                f"{API_BASE_URL}/api/auth/login",
+                                json={"username": username, "password": password}
+                            )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            st.session_state.auth_token = data.get("access_token")
+                            st.session_state.username = data.get("username")
+                            st.success("Successfully logged in!")
+                            st.rerun()
+                        else:
+                            st.error(f"Login failed: {resp.json().get('detail', 'Invalid credentials.')}")
+                    except Exception as e:
+                        st.error(f"Failed to communicate with auth server: {e}")
+        else:
+            if st.button("Register", type="primary", use_container_width=True):
+                if not username or not password:
+                    st.warning("Please provide username and password.")
+                else:
+                    try:
+                        with httpx.Client() as client:
+                            resp = client.post(
+                                f"{API_BASE_URL}/api/auth/register",
+                                json={"username": username, "password": password}
+                            )
+                        if resp.status_code == 201:
+                            st.success("Registered successfully! You can now log in.")
+                        else:
+                            st.error(f"Registration failed: {resp.json().get('detail', 'Username exists or is invalid.')}")
+                    except Exception as e:
+                        st.error(f"Failed to communicate with auth server: {e}")
     
     st.markdown("---")
     st.markdown("### 🖥️ Diagnostics & Metrics")
@@ -106,19 +151,25 @@ with st.sidebar:
     health_ok = False
     diagnostics = {}
     
-    try:
-        with httpx.Client() as client:
-            diag_resp = client.get(f"{API_BASE_URL}/api/diagnostics", headers=get_headers(), timeout=5.0)
-            if diag_resp.status_code == 200:
-                health_ok = True
-                diagnostics = diag_resp.json()
-            elif diag_resp.status_code == 403:
-                st.error("Invalid API Key. Access forbidden.")
-            else:
-                st.warning(f"Server responded with status code: {diag_resp.status_code}")
-    except Exception as e:
-        st.error(f"Cannot connect to FastAPI backend: {e}")
-        st.caption(f"Configured API URL: {API_BASE_URL}")
+    if st.session_state.auth_token:
+        try:
+            with httpx.Client() as client:
+                diag_resp = client.get(f"{API_BASE_URL}/api/diagnostics", headers=get_headers(), timeout=5.0)
+                if diag_resp.status_code == 200:
+                    health_ok = True
+                    diagnostics = diag_resp.json()
+                elif diag_resp.status_code == 401:
+                    st.error("Session expired. Please log in again.")
+                    st.session_state.auth_token = ""
+                    st.session_state.username = ""
+                    st.rerun()
+                else:
+                    st.warning(f"Server responded with status code: {diag_resp.status_code}")
+        except Exception as e:
+            st.error(f"Cannot connect to FastAPI backend: {e}")
+            st.caption(f"Configured API URL: {API_BASE_URL}")
+    else:
+        st.info("Please log in to view system diagnostics.")
         
     if health_ok and diagnostics:
         # Health status indicator
@@ -161,6 +212,11 @@ with st.sidebar:
 # ----------------------------------------------------
 st.markdown('<div class="main-title">CogniFlow Intelligence Platform</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">Local-first grounded Q&A and vector document operations cockpit</div>', unsafe_allow_html=True)
+
+if not st.session_state.auth_token:
+    st.warning("🔒 **Security Gate: Authentication Required**")
+    st.info("Please sign in or create a user account in the sidebar authentication panel to access your isolated document workspace.")
+    st.stop()
 
 # Create layout tabs
 tab_query, tab_ingest, tab_library = st.tabs(["🔍 RAG Query Workspace", "📥 Document Ingest Panel", "📚 Source File Library"])
