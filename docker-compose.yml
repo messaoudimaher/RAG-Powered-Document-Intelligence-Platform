@@ -18,7 +18,32 @@ services:
       - GEMINI_API_KEY=
       - CHROMA_SERVER_HOST=chromadb
       - CHROMA_SERVER_PORT=8000
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
+      - chromadb
+      - ollama
+      - redis
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cogniflow_worker
+    volumes:
+      - ./backend/data:/app/data
+    environment:
+      - SEED_SAMPLE_DOCS=true
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - RELEVANCE_THRESHOLD=0.35
+      - API_KEY=
+      - GEMINI_API_KEY=
+      - CHROMA_SERVER_HOST=chromadb
+      - CHROMA_SERVER_PORT=8000
+      - REDIS_URL=redis://redis:6379/0
+    command: celery -A app.celery_app.celery_app worker --loglevel=info
+    depends_on:
+      - redis
       - chromadb
       - ollama
     restart: unless-stopped
