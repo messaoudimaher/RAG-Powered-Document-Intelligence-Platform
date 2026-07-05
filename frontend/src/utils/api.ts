@@ -10,6 +10,7 @@ import {
 const LOCAL_STORAGE_BASE_URL_KEY = 'cogniflow_api_base_url';
 const LOCAL_STORAGE_TOKEN_KEY = 'cogniflow_token';
 const LOCAL_STORAGE_USERNAME_KEY = 'cogniflow_username';
+const LOCAL_STORAGE_API_KEY_KEY = 'cogniflow_api_key';
 const DEFAULT_API_BASE_URL = 'http://localhost:8000';
 
 export function getApiBaseUrl(): string {
@@ -51,14 +52,31 @@ export function setUsername(username: string): void {
   }
 }
 
+export function getApiKey(): string {
+  if (typeof window !== 'undefined') {
+    return window.localStorage.getItem(LOCAL_STORAGE_API_KEY_KEY) || '';
+  }
+  return '';
+}
+
+export function setApiKey(apiKey: string): void {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(LOCAL_STORAGE_API_KEY_KEY, apiKey);
+  }
+}
+
 // Helper to make fetch requests with auth headers and error handling
 async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T> {
   const baseUrl = getApiBaseUrl().replace(/\/$/, '');
   const token = getToken();
+  const apiKey = getApiKey();
   
   const headers = new Headers(options.headers || {});
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (apiKey) {
+    headers.set('X-API-Key', apiKey);
   }
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
@@ -81,7 +99,15 @@ async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T>
     let errorMessage = `HTTP error ${response.status}`;
     try {
       const errorData = await response.json();
-      errorMessage = errorData.detail || errorMessage;
+      if (errorData && errorData.detail) {
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map((e: any) => e.msg || JSON.stringify(e)).join(', ');
+        } else if (typeof errorData.detail === 'object') {
+          errorMessage = errorData.detail.message || JSON.stringify(errorData.detail);
+        }
+      }
     } catch {
       // ignore parsing error, default message stands
     }

@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # Read environment variables
-API_BASE_URL = os.environ.get("NEXT_PUBLIC_API_BASE_URL", "http://localhost:8000").rstrip("/")
+API_BASE_URL = os.environ.get("BACKEND_API_URL", os.environ.get("NEXT_PUBLIC_API_BASE_URL", "http://localhost:8000")).rstrip("/")
 
 # ----------------------------------------------------
 # STYLING & GRAPHICS

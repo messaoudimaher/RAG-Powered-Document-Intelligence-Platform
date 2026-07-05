@@ -116,7 +116,7 @@ async def test_retrieve_multi_query_rrf(mock_db_query, mock_embeddings, mock_llm
     mock_embeddings.return_value = [[1], [2], [3], [4]]
 
     # Query 1 result
-    def query_mock(collection_type, query_embeddings, n_results, where=None):
+    def query_mock(collection_type, query_embeddings, n_results, where=None, username=None):
         emb = query_embeddings[0]
         if emb == [1]:  # original query
             return {"ids": [["c1", "c2"]], "documents": [["doc 1", "doc 2"]], "metadatas": [[{"source": "s1"}, {"source": "s2"}]], "distances": [[0.1, 0.4]]}
@@ -163,7 +163,7 @@ async def test_retrieve_flare_grounded(mock_generate_completion, mock_retrieve_b
     assert res["answer"] == "This draft answer is fully supported by Initial context sentence."
     assert len(res["citations"]) == 1
     assert res["citations"][0]["id"] == "c1"
-    mock_retrieve_baseline.assert_called_once_with("public", "test query", limit=1)
+    mock_retrieve_baseline.assert_called_once_with("public", "test query", limit=1, username=None)
 
 
 @pytest.mark.asyncio
@@ -211,5 +211,5 @@ async def test_retrieve_flare_with_secondary_retrieval(mock_generate_completion,
     assert res["answer"] == "Final synthesized answer with RRF details."
     assert len(res["citations"]) == 2
     assert any(c["id"] == "c2" for c in res["citations"])
-    mock_retrieve_baseline.assert_any_call("public", "RRF", limit=3)
+    mock_retrieve_baseline.assert_any_call("public", "RRF", limit=3, username=None)
 

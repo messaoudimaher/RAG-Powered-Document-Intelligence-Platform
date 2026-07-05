@@ -43,7 +43,7 @@ class Settings(BaseSettings):
         default=True, validation_alias="ENABLE_FALLBACK_RETRIEVAL"
     )
     arxiv_base_url: str = Field(
-        default="http://export.arxiv.org/api", validation_alias="ARXIV_BASE_URL"
+        default="https://export.arxiv.org/api", validation_alias="ARXIV_BASE_URL"
     )
     disable_openapi: bool = Field(default=False, validation_alias="DISABLE_OPENAPI")
     cogniflow_git_sha: str = Field(default="dev", validation_alias="COGNIFLOW_GIT_SHA")

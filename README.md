@@ -80,7 +80,9 @@ python -m venv .venv
 # Activate virtualenv (Windows)
 .venv\Scripts\activate
 # Install dependencies
-pip install -r requirements.txt
+pip install -e .
+# Or if using uv:
+uv sync
 
 # Run backend development server
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000

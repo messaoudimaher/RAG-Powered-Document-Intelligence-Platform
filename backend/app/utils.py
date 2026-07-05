@@ -27,10 +27,10 @@ async def fetch_arxiv_paper(arxiv_id: str) -> tuple[str, bytes]:
     cleaned_id = arxiv_id.strip()
 
     # 1. Fetch metadata to extract title
-    meta_url = f"http://export.arxiv.org/api/query?id_list={cleaned_id}"
+    meta_url = f"https://export.arxiv.org/api/query?id_list={cleaned_id}"
     logger.info(f"Fetching arXiv metadata from: {meta_url}")
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         # Fetch metadata
         meta_resp = await client.get(meta_url, timeout=15.0)
         meta_resp.raise_for_status()
@@ -69,7 +69,7 @@ async def fetch_arxiv_paper(arxiv_id: str) -> tuple[str, bytes]:
         # Handle cases where PDF doesn't exist
         if pdf_resp.status_code != 200:
             # Try alternative export url
-            alt_url = f"http://export.arxiv.org/pdf/{cleaned_id}"
+            alt_url = f"https://export.arxiv.org/pdf/{cleaned_id}"
             logger.info(f"Failed to fetch PDF from primary URL. Trying alternative: {alt_url}")
             pdf_resp = await client.get(alt_url, headers=headers, timeout=30.0)
 

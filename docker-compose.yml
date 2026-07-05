@@ -94,16 +94,16 @@ services:
     restart: unless-stopped
 
   ollama:
-    image: ollama/ollama:0.1.48
+    image: ollama/ollama:latest
     container_name: cogniflow_ollama
     ports:
       - "11434:11434"
     volumes:
       - ./backend/data/ollama:/root/.ollama
     restart: unless-stopped
-
+ 
   ollama-setup:
-    image: ollama/ollama:0.1.48
+    image: ollama/ollama:latest
     container_name: cogniflow_ollama_setup
     depends_on:
       - ollama
@@ -113,7 +113,7 @@ services:
     command: >
       "
       echo 'Waiting for Ollama service...' &&
-      until curl -s http://ollama:11434/api/tags > /dev/null; do sleep 2; done &&
+      until ollama list > /dev/null 2>&1; do sleep 2; done &&
       echo 'Pulling nomic-embed-text model...' &&
       ollama pull nomic-embed-text &&
       echo 'Pulling llama3.2 model...' &&
