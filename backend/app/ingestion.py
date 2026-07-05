@@ -80,6 +80,7 @@ async def ingest_document(
     chunk_size: int = 800,
     chunk_overlap: int = 100,
     title: str | None = None,
+    username: str | None = None,
 ) -> dict:
     """
     Coordinates the ingestion pipeline:
@@ -149,6 +150,7 @@ async def ingest_document(
         embeddings=embeddings,
         metadatas=metadatas,
         documents=chunks,
+        username=username,
     )
 
     return {

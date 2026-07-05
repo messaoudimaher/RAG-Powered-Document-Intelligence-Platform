@@ -23,9 +23,18 @@ from app.schemas import (
     TaskStatusResponse,
     QueryRequest,
     QueryResponse,
+    UsernamePasswordRequest,
+    AuthResponse,
 )
 from app.celery_app import celery_app, ingest_file_task, ingest_arxiv_task
 from app.utils import fetch_arxiv_paper, get_uptime_seconds
+from app.auth import (
+    init_auth_db,
+    get_current_user,
+    create_user,
+    authenticate_user,
+    create_access_token,
+)
 
 logger = logging.getLogger("cogniflow.main")
 
@@ -54,6 +63,9 @@ async def verify_api_key(x_api_key: str = Security(api_key_header)):
 async def lifespan(app: FastAPI):
     # Startup tasks
     logger.info("Initializing CogniFlow RAG Backend...")
+
+    # 0. Initialize auth database
+    init_auth_db()
 
     # 1. Verify Chroma DB connection
     try:
@@ -200,19 +212,52 @@ async def readiness():
     return {"status": "ready"}
 
 
+@app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)
+async def register(request: UsernamePasswordRequest):
+    """
+    Registers a new system user.
+    """
+    success = create_user(request.username, request.password)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists or registration failed."
+        )
+    return {"message": "User registered successfully."}
+
+
+@app.post("/api/auth/login", response_model=AuthResponse)
+async def login(request: UsernamePasswordRequest):
+    """
+    Authenticates user and returns an access token.
+    """
+    authenticated = authenticate_user(request.username, request.password)
+    if not authenticated:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password."
+        )
+    access_token = create_access_token({"sub": request.username})
+    return AuthResponse(
+        access_token=access_token,
+        token_type="bearer",
+        username=request.username
+    )
+
+
 @app.get(
-    "/api/diagnostics", response_model=DiagnosticsResponse, dependencies=[Depends(verify_api_key)]
+    "/api/diagnostics", response_model=DiagnosticsResponse
 )
-async def diagnostics():
+async def diagnostics(username: str = Depends(get_current_user)):
     """
     Provides comprehensive server statistics, settings, and health metadata.
-    Protected by X-API-Key if configured.
+    Protected by JWT token.
     """
     chroma_ok = False
     ollama_ok = False
 
     try:
-        stats = db_manager.get_stats()
+        stats = db_manager.get_stats(username)
         chroma_ok = True
         public_count = stats.get("public_count", 0)
         papers_count = stats.get("papers_count", 0)
@@ -244,12 +289,13 @@ async def diagnostics():
 # ----------------------------------------------------
 # 5. DATA INGESTION & QUERY ENDPOINTS (PROTECTED)
 # ----------------------------------------------------
-@app.post("/api/ingest", response_model=IngestTaskResponse, dependencies=[Depends(verify_api_key)])
+@app.post("/api/ingest", response_model=IngestTaskResponse)
 async def ingest_file(
     collection_type: str = Form(
         ..., description="Target database collection: 'public' or 'papers'"
     ),
     file: UploadFile = File(...),
+    username: str = Depends(get_current_user),
 ):
     """
     Ingests and vectorizes uploaded PDF, DOCX, or TXT document asynchronously via Celery.
@@ -284,7 +330,7 @@ async def ingest_file(
 
     # Dispatch ingestion worker task
     try:
-        task = ingest_file_task.delay(collection_type, file.filename, temp_filepath, file_ext)
+        task = ingest_file_task.delay(collection_type, file.filename, temp_filepath, file_ext, username)
         return IngestTaskResponse(
             task_id=task.id,
             status="processing",
@@ -301,14 +347,14 @@ async def ingest_file(
 
 
 @app.post(
-    "/api/ingest/arxiv", response_model=IngestTaskResponse, dependencies=[Depends(verify_api_key)]
+    "/api/ingest/arxiv", response_model=IngestTaskResponse
 )
-async def ingest_arxiv(request: ArxivIngestRequest):
+async def ingest_arxiv(request: ArxivIngestRequest, username: str = Depends(get_current_user)):
     """
     Fetches a scientific publication from arXiv by ID, parses, embeds and indexes in background.
     """
     try:
-        task = ingest_arxiv_task.delay(request.collection_type, request.arxiv_id)
+        task = ingest_arxiv_task.delay(request.collection_type, request.arxiv_id, username)
         return IngestTaskResponse(
             task_id=task.id,
             status="processing",
@@ -325,9 +371,8 @@ async def ingest_arxiv(request: ArxivIngestRequest):
 @app.get(
     "/api/ingest/status/{task_id}",
     response_model=TaskStatusResponse,
-    dependencies=[Depends(verify_api_key)],
 )
-async def get_task_status(task_id: str):
+async def get_task_status(task_id: str, username: str = Depends(get_current_user)):
     """
     Retrieves the status and result of a background Celery ingestion task.
     """
@@ -366,8 +411,8 @@ async def get_task_status(task_id: str):
         )
 
 
-@app.post("/api/query", response_model=QueryResponse, dependencies=[Depends(verify_api_key)])
-async def query_rag(request: QueryRequest):
+@app.post("/api/query", response_model=QueryResponse)
+async def query_rag(request: QueryRequest, username: str = Depends(get_current_user)):
     """
     Executes a retrieval-augmented generation search with configurable strategies:
     - baseline: Top-K dense vector search
@@ -389,6 +434,7 @@ async def query_rag(request: QueryRequest):
             strategy=request.strategy,
             limit=request.limit,
             rerank=request.rerank,
+            username=username,
         )
         return QueryResponse(
             answer=result["answer"],
@@ -403,9 +449,9 @@ async def query_rag(request: QueryRequest):
 
 
 @app.get(
-    "/api/documents", response_model=list[DocumentInfo], dependencies=[Depends(verify_api_key)]
+    "/api/documents", response_model=list[DocumentInfo]
 )
-async def list_documents(collection_type: str):
+async def list_documents(collection_type: str, username: str = Depends(get_current_user)):
     """
     Lists unique source documents in a collection and their chunk counts.
     """
@@ -415,7 +461,7 @@ async def list_documents(collection_type: str):
             detail="collection_type must be either 'public' or 'papers'.",
         )
     try:
-        docs = db_manager.get_unique_documents(collection_type)
+        docs = db_manager.get_unique_documents(collection_type, username)
         return [
             DocumentInfo(
                 source=doc["source"],
@@ -434,8 +480,8 @@ async def list_documents(collection_type: str):
         ) from e
 
 
-@app.delete("/api/documents", dependencies=[Depends(verify_api_key)])
-async def delete_document(collection_type: str, source: str):
+@app.delete("/api/documents")
+async def delete_document(collection_type: str, source: str, username: str = Depends(get_current_user)):
     """
     Deletes all chunks corresponding to a specific source document.
     """
@@ -445,7 +491,7 @@ async def delete_document(collection_type: str, source: str):
             detail="collection_type must be 'public' or 'papers'.",
         )
 
-    success = db_manager.delete_document(collection_type, source)
+    success = db_manager.delete_document(collection_type, source, username)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

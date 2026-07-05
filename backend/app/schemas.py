@@ -88,3 +88,14 @@ class DocumentInfo(BaseModel):
     chunk_count: int
     file_type: str
     added_at: str
+
+
+class UsernamePasswordRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=4, max_length=100)
+
+
+class AuthResponse(BaseModel):
+    access_token: str
+    token_type: str
+    username: str

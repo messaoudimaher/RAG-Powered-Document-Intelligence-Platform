@@ -22,11 +22,11 @@ celery_app.conf.update(
 )
 
 @celery_app.task(name="app.celery_app.ingest_file_task")
-def ingest_file_task(collection_type: str, file_name: str, file_path: str, file_type: str) -> dict:
+def ingest_file_task(collection_type: str, file_name: str, file_path: str, file_type: str, username: str = None) -> dict:
     """
     Synchronous Celery task wrapper that runs the async ingest_document pipeline.
     """
-    logger.info(f"Celery worker received ingestion task for file: {file_name}")
+    logger.info(f"Celery worker received ingestion task for file: {file_name} (user: {username})")
     try:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Uploaded file not found at local temporary path: {file_path}")
@@ -39,7 +39,8 @@ def ingest_file_task(collection_type: str, file_name: str, file_path: str, file_
             collection_type=collection_type,
             file_name=file_name,
             file_bytes=file_bytes,
-            file_type=file_type
+            file_type=file_type,
+            username=username
         ))
         
         logger.info(f"Successfully processed ingestion for: {file_name}")
@@ -58,11 +59,11 @@ def ingest_file_task(collection_type: str, file_name: str, file_path: str, file_
 
 
 @celery_app.task(name="app.celery_app.ingest_arxiv_task")
-def ingest_arxiv_task(collection_type: str, arxiv_id: str) -> dict:
+def ingest_arxiv_task(collection_type: str, arxiv_id: str, username: str = None) -> dict:
     """
     Synchronous Celery task wrapper that fetches and ingests an arXiv publication.
     """
-    logger.info(f"Celery worker received arXiv ingestion task for ID: {arxiv_id}")
+    logger.info(f"Celery worker received arXiv ingestion task for ID: {arxiv_id} (user: {username})")
     try:
         async def run_arxiv_ingestion():
             title, pdf_bytes = await fetch_arxiv_paper(arxiv_id)
@@ -72,7 +73,8 @@ def ingest_arxiv_task(collection_type: str, arxiv_id: str) -> dict:
                 file_name=file_name,
                 file_bytes=pdf_bytes,
                 file_type="pdf",
-                title=title
+                title=title,
+                username=username
             )
             return result
 

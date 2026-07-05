@@ -76,7 +76,7 @@ def format_citations(results: dict) -> list[dict]:
     return citations
 
 
-async def retrieve_baseline(collection_type: str, query: str, limit: int = 5) -> list[dict]:
+async def retrieve_baseline(collection_type: str, query: str, limit: int = 5, username: str = None) -> list[dict]:
     """
     Performs standard baseline vector search.
     """
@@ -85,16 +85,16 @@ async def retrieve_baseline(collection_type: str, query: str, limit: int = 5) ->
         return []
 
     raw_results = db_manager.query(
-        collection_type=collection_type, query_embeddings=[query_embeddings[0]], n_results=limit
+        collection_type=collection_type, query_embeddings=[query_embeddings[0]], n_results=limit, username=username
     )
     return format_citations(raw_results)
 
 
-async def retrieve_hyde(collection_type: str, query: str, limit: int = 5) -> list[dict]:
+async def retrieve_hyde(collection_type: str, query: str, limit: int = 5, username: str = None) -> list[dict]:
     """
     Performs HyDE search: LLM generates a hypothetical answer -> Embedded -> Vector search.
     """
-    logger.info(f"Executing HyDE retrieval for query: '{query}'")
+    logger.info(f"Executing HyDE retrieval for query: '{query}' (user: {username})")
 
     # Step 1: Generate hypothetical document
     system_prompt = (
@@ -112,23 +112,23 @@ async def retrieve_hyde(collection_type: str, query: str, limit: int = 5) -> lis
     # Step 2: Embed hypothetical answer
     embeddings = await llm_client.get_embeddings([hypothetical_doc])
     if not embeddings:
-        return await retrieve_baseline(collection_type, query, limit)
+        return await retrieve_baseline(collection_type, query, limit, username=username)
 
     # Step 3: Vector search
     raw_results = db_manager.query(
-        collection_type=collection_type, query_embeddings=[embeddings[0]], n_results=limit
+        collection_type=collection_type, query_embeddings=[embeddings[0]], n_results=limit, username=username
     )
     return format_citations(raw_results)
 
 
-async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int = 5) -> list[dict]:
+async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int = 5, username: str = None) -> list[dict]:
     """
     Multi-query with Reciprocal Rank Fusion:
     1. Generate 3 query variations.
     2. Retrieve top (limit * 2) matches for all 4 queries (original + 3 variations).
     3. Perform Reciprocal Rank Fusion (RRF) to merge, rank, and take top N.
     """
-    logger.info(f"Executing Multi-Query RRF retrieval for: '{query}'")
+    logger.info(f"Executing Multi-Query RRF retrieval for: '{query}' (user: {username})")
 
     # Step 1: Generate query variations
     system_prompt = (
@@ -151,7 +151,7 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
     # Step 2: Fetch query embeddings and search
     embeddings = await llm_client.get_embeddings(queries)
     if not embeddings:
-        return await retrieve_baseline(collection_type, query, limit)
+        return await retrieve_baseline(collection_type, query, limit, username=username)
 
     # Retrieve slightly more than limit for each to allow rank fusion depth
     search_depth = max(limit * 2, 10)
@@ -160,7 +160,7 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
     results_by_query = []
     for emb in embeddings:
         raw_res = db_manager.query(
-            collection_type=collection_type, query_embeddings=[emb], n_results=search_depth
+            collection_type=collection_type, query_embeddings=[emb], n_results=search_depth, username=username
         )
         results_by_query.append(raw_res)
 
@@ -238,7 +238,7 @@ async def retrieve_multi_query_rrf(collection_type: str, query: str, limit: int 
     return citations
 
 
-async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> dict:
+async def retrieve_flare(collection_type: str, query: str, limit: int = 5, username: str = None) -> dict:
     """
     Implements a local-friendly active retrieval FLARE loop.
     1. Initial retrieval based on user query to get starting context.
@@ -248,10 +248,10 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
        extract search queries for those gaps, fetch new context, and regenerate.
     5. Returns both the final grounded answer and the aggregated SourceCitations.
     """
-    logger.info(f"Executing FLARE active retrieval for: '{query}'")
+    logger.info(f"Executing FLARE active retrieval for: '{query}' (user: {username})")
 
     # Step 1: Initial Retrieval
-    initial_citations = await retrieve_baseline(collection_type, query, limit=limit)
+    initial_citations = await retrieve_baseline(collection_type, query, limit=limit, username=username)
     context_text = "\n\n".join(
         [
             f"Source: {c['source']} (Confidence: {c['confidence']})\n{c['text']}"
@@ -298,7 +298,7 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
     if retrieve_queries:
         all_new_citations = []
         for r_query in retrieve_queries[:2]:  # Limit to 2 sub-queries to stay fast
-            new_cites = await retrieve_baseline(collection_type, r_query, limit=3)
+            new_cites = await retrieve_baseline(collection_type, r_query, limit=3, username=username)
             all_new_citations.extend(new_cites)
 
         # Merge citations
@@ -332,7 +332,7 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
 
 
 async def answer_with_rag(
-    collection_type: str, query: str, strategy: str = "baseline", limit: int = 5, rerank: bool = False
+    collection_type: str, query: str, strategy: str = "baseline", limit: int = 5, rerank: bool = False, username: str = None
 ) -> dict:
     """
     Main entry point for executing RAG queries.
@@ -342,18 +342,18 @@ async def answer_with_rag(
 
     if strategy_clean == "flare":
         # FLARE handles generation and retrieval iteratively in the function
-        response_data = await retrieve_flare(collection_type, query, limit)
+        response_data = await retrieve_flare(collection_type, query, limit, username=username)
     else:
         # For standard strategies, determine retrieval limit (retrieve more if re-ranking is enabled)
         fetch_limit = max(2 * limit, 10) if rerank else limit
 
         # 1. Fetch relevant passages based on strategy
         if strategy_clean == "hyde":
-            citations = await retrieve_hyde(collection_type, query, fetch_limit)
+            citations = await retrieve_hyde(collection_type, query, fetch_limit, username=username)
         elif strategy_clean == "multi_query":
-            citations = await retrieve_multi_query_rrf(collection_type, query, fetch_limit)
+            citations = await retrieve_multi_query_rrf(collection_type, query, fetch_limit, username=username)
         else:  # baseline
-            citations = await retrieve_baseline(collection_type, query, fetch_limit)
+            citations = await retrieve_baseline(collection_type, query, fetch_limit, username=username)
 
         # 2. Perform Cross-Encoder re-ranking if requested
         if rerank and citations:

@@ -32,34 +32,44 @@ class DatabaseManager:
 
     def initialize_collections(self):
         """
-        Initializes the public and papers collections using cosine similarity.
+        Initializes the default public and papers collections.
         """
         try:
-            self.public_collection = self.client.get_or_create_collection(
-                name=settings.chroma_collection_public, metadata={"hnsw:space": "cosine"}
-            )
-            logger.info(f"Initialized collection: {settings.chroma_collection_public}")
-
-            self.papers_collection = self.client.get_or_create_collection(
-                name=settings.chroma_collection_name, metadata={"hnsw:space": "cosine"}
-            )
-            logger.info(f"Initialized collection: {settings.chroma_collection_name}")
+            self.get_collection("public")
+            self.get_collection("papers")
         except Exception as e:
-            logger.error(f"Error initializing ChromaDB collections: {e}")
+            logger.error(f"Error initializing default ChromaDB collections: {e}")
             raise
 
-    def get_collection(self, collection_type: str):
+    def get_collection(self, collection_type: str, username: str = None):
         """
-        Returns the appropriate collection based on type ('public' or 'papers').
+        Returns the appropriate collection based on type and scopes it by username if provided.
         """
         if collection_type == "public":
-            return self.public_collection
+            base_name = settings.chroma_collection_public
         elif collection_type == "papers":
-            return self.papers_collection
+            base_name = settings.chroma_collection_name
         else:
             raise ValueError(
                 f"Unknown collection type: {collection_type}. Use 'public' or 'papers'."
             )
+        
+        collection_name = f"{base_name}_{username}" if username else base_name
+        
+        if not hasattr(self, "_collections_cache"):
+            self._collections_cache = {}
+            
+        if collection_name not in self._collections_cache:
+            try:
+                self._collections_cache[collection_name] = self.client.get_or_create_collection(
+                    name=collection_name, metadata={"hnsw:space": "cosine"}
+                )
+                logger.info(f"Initialized dynamic collection: {collection_name}")
+            except Exception as e:
+                logger.error(f"Error creating collection {collection_name}: {e}")
+                raise
+        
+        return self._collections_cache[collection_name]
 
     def add_chunks(
         self,
@@ -68,13 +78,14 @@ class DatabaseManager:
         embeddings: list[list[float]],
         metadatas: list[dict],
         documents: list[str],
+        username: str = None,
     ):
         """
         Adds vector embeddings and source chunks to the database.
         """
-        collection = self.get_collection(collection_type)
+        collection = self.get_collection(collection_type, username)
         collection.add(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
-        logger.info(f"Added {len(ids)} chunks to {collection_type} collection.")
+        logger.info(f"Added {len(ids)} chunks to {collection_type} collection (user: {username}).")
 
     def query(
         self,
@@ -82,12 +93,13 @@ class DatabaseManager:
         query_embeddings: list[list[float]],
         n_results: int = 5,
         where: dict | None = None,
+        username: str = None,
     ) -> dict:
         """
         Performs vector search using query embeddings in the selected collection.
         Returns matches including documents, metadatas, and distances.
         """
-        collection = self.get_collection(collection_type)
+        collection = self.get_collection(collection_type, username)
         results = collection.query(
             query_embeddings=query_embeddings,
             n_results=n_results,
@@ -96,16 +108,13 @@ class DatabaseManager:
         )
         return results
 
-    def get_unique_documents(self, collection_type: str) -> list[dict]:
+    def get_unique_documents(self, collection_type: str, username: str = None) -> list[dict]:
         """
         Returns a list of unique source documents in the collection,
         including chunk count and overall file metadata.
         """
-        collection = self.get_collection(collection_type)
+        collection = self.get_collection(collection_type, username)
 
-        # Retrieve all items (only metadatas to optimize speed/memory)
-        # Note: Chroma allows calling get() with empty parameter, but to prevent loading all text
-        # we can specify including only metadata.
         result = collection.get(include=["metadatas"])
         metadatas = result.get("metadatas", [])
 
@@ -129,28 +138,30 @@ class DatabaseManager:
 
         return list(doc_map.values())
 
-    def delete_document(self, collection_type: str, source_name: str) -> bool:
+    def delete_document(self, collection_type: str, source_name: str, username: str = None) -> bool:
         """
         Deletes all chunks corresponding to a specific source document.
         """
-        collection = self.get_collection(collection_type)
+        collection = self.get_collection(collection_type, username)
         try:
             # Delete by metadata filter 'source'
             collection.delete(where={"source": source_name})
-            logger.info(f"Deleted document '{source_name}' from {collection_type} collection.")
+            logger.info(f"Deleted document '{source_name}' from {collection_type} collection (user: {username}).")
             return True
         except Exception as e:
             logger.error(f"Failed to delete document '{source_name}': {e}")
             return False
 
-    def get_stats(self) -> dict:
+    def get_stats(self, username: str = None) -> dict:
         """
         Returns system collection count statistics.
         """
         try:
+            public_col = self.get_collection("public", username)
+            papers_col = self.get_collection("papers", username)
             return {
-                "public_count": self.public_collection.count(),
-                "papers_count": self.papers_collection.count(),
+                "public_count": public_col.count(),
+                "papers_count": papers_col.count(),
                 "status": "healthy",
             }
         except Exception as e:
