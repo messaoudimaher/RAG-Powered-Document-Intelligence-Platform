@@ -29,6 +29,19 @@ export interface IngestResponse {
   status: string;
 }
 
+export interface IngestTaskResponse {
+  task_id: string;
+  status: string;
+  source: string;
+}
+
+export interface TaskStatusResponse {
+  task_id: string;
+  status: string;
+  result: IngestResponse | null;
+  error: string | null;
+}
+
 export interface QueryRequest {
   collection_type: string;
   query: string;

@@ -2,6 +2,8 @@ import {
   DiagnosticsResponse,
   DocumentInfo,
   IngestResponse,
+  IngestTaskResponse,
+  TaskStatusResponse,
   QueryResponse,
 } from '../types';
 
@@ -84,25 +86,29 @@ export const api = {
     });
   },
 
-  async uploadFile(collection_type: 'public' | 'papers', file: File): Promise<IngestResponse> {
+  async uploadFile(collection_type: 'public' | 'papers', file: File): Promise<IngestTaskResponse> {
     const formData = new FormData();
     formData.append('collection_type', collection_type);
     formData.append('file', file);
 
-    return fetchJson<IngestResponse>('/api/ingest', {
+    return fetchJson<IngestTaskResponse>('/api/ingest', {
       method: 'POST',
       body: formData,
     });
   },
 
-  async ingestArxiv(collection_type: 'public' | 'papers', arxivId: string): Promise<IngestResponse> {
-    return fetchJson<IngestResponse>('/api/ingest/arxiv', {
+  async ingestArxiv(collection_type: 'public' | 'papers', arxivId: string): Promise<IngestTaskResponse> {
+    return fetchJson<IngestTaskResponse>('/api/ingest/arxiv', {
       method: 'POST',
       body: JSON.stringify({
         arxiv_id: arxivId,
         collection_type,
       }),
     });
+  },
+
+  async getTaskStatus(taskId: string): Promise<TaskStatusResponse> {
+    return fetchJson<TaskStatusResponse>(`/api/ingest/status/${taskId}`);
   },
 
   async listDocuments(collection_type: 'public' | 'papers'): Promise<DocumentInfo[]> {

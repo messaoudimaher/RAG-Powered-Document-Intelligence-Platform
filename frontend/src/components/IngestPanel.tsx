@@ -85,26 +85,47 @@ export default function IngestPanel({ activeCollection, onIngestionSuccess }: In
     setFile(selectedFile);
   };
 
+  const pollTaskStatus = (taskId: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.getTaskStatus(taskId);
+        
+        if (res.status === 'PENDING' || res.status === 'RECEIVED') {
+          setIngestState('uploading');
+        } else if (res.status === 'STARTED' || res.status === 'PROGRESS') {
+          setIngestState('embedding');
+        } else if (res.status === 'SUCCESS') {
+          clearInterval(interval);
+          if (res.result) {
+            setChunksCount(res.result.chunks_count);
+          }
+          setIngestState('completed');
+          setFile(null);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          onIngestionSuccess();
+        } else if (res.status === 'FAILURE') {
+          clearInterval(interval);
+          setErrorMessage(res.error || 'Ingestion task execution failed.');
+          setIngestState('failed');
+        }
+      } catch (err: any) {
+        clearInterval(interval);
+        setErrorMessage(err.message || 'Error tracking background task.');
+        setIngestState('failed');
+      }
+    }, 1500);
+  };
+
   const handleIngestFile = async () => {
     if (!file) return;
     setIngestState('uploading');
     setErrorMessage('');
     
     try {
-      // Step 2-4 simulate states for refined UI progress
-      setTimeout(() => setIngestState('chunking'), 800);
-      setTimeout(() => setIngestState('embedding'), 1800);
-
       const res = await api.uploadFile(activeCollection, file);
-      
-      setChunksCount(res.chunks_count);
-      setIngestState('completed');
-      setFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      
-      onIngestionSuccess();
+      pollTaskStatus(res.task_id);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Ingestion failed');
+      setErrorMessage(err.message || 'Failed to dispatch file ingestion');
       setIngestState('failed');
     }
   };
@@ -119,15 +140,12 @@ export default function IngestPanel({ activeCollection, onIngestionSuccess }: In
     setIngestState('idle');
     
     try {
-      setIngestState('uploading'); // Downloading from arXiv
+      setIngestState('uploading');
       setChunksCount(0);
       
       const res = await api.ingestArxiv(activeCollection, cleanId);
-      
-      setChunksCount(res.chunks_count);
-      setIngestState('completed');
       setArxivId('');
-      onIngestionSuccess();
+      pollTaskStatus(res.task_id);
     } catch (err: any) {
       setErrorMessage(err.message || 'arXiv download & vectorization failed');
       setIngestState('failed');
