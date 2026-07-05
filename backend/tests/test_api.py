@@ -238,3 +238,47 @@ def test_delete_document_failure(mock_delete):
 
 
 
+@patch("app.main.fetch_arxiv_paper", new_callable=AsyncMock)
+@patch("app.main.ingest_document", new_callable=AsyncMock)
+def test_ingest_arxiv_success(mock_ingest, mock_fetch):
+    """
+    Verify successful arXiv ingestion.
+    """
+    mock_fetch.return_value = ("Test Arxiv Title", b"fake pdf bytes")
+    mock_ingest.return_value = {
+        "source": "arxiv_2305.16300.pdf",
+        "title": "Test Arxiv Title",
+        "chunks_count": 8,
+        "file_type": "pdf",
+        "status": "success"
+    }
+
+    payload = {
+        "arxiv_id": "2305.16300",
+        "collection_type": "papers"
+    }
+
+    response = client.post(
+        "/api/ingest/arxiv",
+        headers={"X-API-Key": "test_secret_key"},
+        json=payload
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["source"] == "arxiv_2305.16300.pdf"
+    assert data["chunks_count"] == 8
+    assert data["status"] == "success"
+    mock_fetch.assert_called_once_with("2305.16300")
+    mock_ingest.assert_called_once()
+
+
+def test_ingest_arxiv_unauthorized():
+    """
+    Verify arXiv ingestion is unauthorized without credentials.
+    """
+    payload = {
+        "arxiv_id": "2305.16300",
+        "collection_type": "papers"
+    }
+    response = client.post("/api/ingest/arxiv", json=payload)
+    assert response.status_code == 403
