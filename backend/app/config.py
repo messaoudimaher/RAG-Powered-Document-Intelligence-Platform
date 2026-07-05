@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     )
     chroma_server_host: str = Field(default="", validation_alias="CHROMA_SERVER_HOST")
     chroma_server_port: int = Field(default=8000, validation_alias="CHROMA_SERVER_PORT")
+    redis_url: str = Field(default="redis://localhost:6379/0", validation_alias="REDIS_URL")
 
     # Ollama configurations
     ollama_base_url: str = Field(

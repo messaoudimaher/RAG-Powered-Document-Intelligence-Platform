@@ -12,3 +12,5 @@ streamlit==1.58.0
 pytest==9.0.3
 ruff==0.15.15
 python-multipart==0.0.9
+celery==5.4.0
+redis==5.0.8
