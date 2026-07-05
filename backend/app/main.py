@@ -388,6 +388,7 @@ async def query_rag(request: QueryRequest):
             query=request.query,
             strategy=request.strategy,
             limit=request.limit,
+            rerank=request.rerank,
         )
         return QueryResponse(
             answer=result["answer"],

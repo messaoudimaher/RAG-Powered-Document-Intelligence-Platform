@@ -8,6 +8,19 @@ from app.llm_client import llm_client
 logger = logging.getLogger("cogniflow.retrieval")
 
 
+_reranker_model = None
+
+
+def get_reranker():
+    global _reranker_model
+    if _reranker_model is None:
+        from sentence_transformers import CrossEncoder
+
+        logger.info(f"Loading Cross-Encoder reranker model '{settings.reranker_model}'...")
+        _reranker_model = CrossEncoder(settings.reranker_model)
+    return _reranker_model
+
+
 def calculate_confidence(distance: float) -> str:
     """
     Maps cosine distance to a confidence label:
@@ -319,7 +332,7 @@ async def retrieve_flare(collection_type: str, query: str, limit: int = 5) -> di
 
 
 async def answer_with_rag(
-    collection_type: str, query: str, strategy: str = "baseline", limit: int = 5
+    collection_type: str, query: str, strategy: str = "baseline", limit: int = 5, rerank: bool = False
 ) -> dict:
     """
     Main entry point for executing RAG queries.
@@ -327,36 +340,40 @@ async def answer_with_rag(
     """
     strategy_clean = strategy.lower().strip()
 
-    # 1. Fetch relevant passages based on strategy
-    if strategy_clean == "hyde":
-        citations = await retrieve_hyde(collection_type, query, limit)
-        # Generate answer with citations
-        context = "\n\n".join([f"Source: {c['source']}\n{c['text']}" for c in citations])
-        system_prompt = "You are a highly analytical assistant. Answer the user question based strictly on the provided context."
-        answer = await llm_client.generate_completion(
-            prompt=f"Context:\n{context}\n\nQuestion:\n{query}",
-            system_prompt=system_prompt,
-            temperature=0.2,
-        )
-        response_data = {"answer": answer, "citations": citations}
-
-    elif strategy_clean == "multi_query":
-        citations = await retrieve_multi_query_rrf(collection_type, query, limit)
-        context = "\n\n".join([f"Source: {c['source']}\n{c['text']}" for c in citations])
-        system_prompt = "You are a highly analytical assistant. Answer the user question based strictly on the provided context."
-        answer = await llm_client.generate_completion(
-            prompt=f"Context:\n{context}\n\nQuestion:\n{query}",
-            system_prompt=system_prompt,
-            temperature=0.2,
-        )
-        response_data = {"answer": answer, "citations": citations}
-
-    elif strategy_clean == "flare":
+    if strategy_clean == "flare":
         # FLARE handles generation and retrieval iteratively in the function
         response_data = await retrieve_flare(collection_type, query, limit)
+    else:
+        # For standard strategies, determine retrieval limit (retrieve more if re-ranking is enabled)
+        fetch_limit = max(2 * limit, 10) if rerank else limit
 
-    else:  # baseline
-        citations = await retrieve_baseline(collection_type, query, limit)
+        # 1. Fetch relevant passages based on strategy
+        if strategy_clean == "hyde":
+            citations = await retrieve_hyde(collection_type, query, fetch_limit)
+        elif strategy_clean == "multi_query":
+            citations = await retrieve_multi_query_rrf(collection_type, query, fetch_limit)
+        else:  # baseline
+            citations = await retrieve_baseline(collection_type, query, fetch_limit)
+
+        # 2. Perform Cross-Encoder re-ranking if requested
+        if rerank and citations:
+            try:
+                reranker = get_reranker()
+                pairs = [(query, c["text"]) for c in citations]
+                scores = reranker.predict(pairs).tolist()
+                for c, score in zip(citations, scores):
+                    c["rerank_score"] = score
+                
+                # Sort by rerank score descending
+                citations.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
+                
+                # Slice back to original user-specified limit
+                citations = citations[:limit]
+            except Exception as e:
+                logger.error(f"Error during Cross-Encoder re-ranking: {e}. Falling back to default order.")
+                citations = citations[:limit]
+
+        # 3. Generate answer using top re-ranked citations
         context = "\n\n".join([f"Source: {c['source']}\n{c['text']}" for c in citations])
         system_prompt = "You are a highly analytical assistant. Answer the user question based strictly on the provided context."
         answer = await llm_client.generate_completion(
@@ -367,7 +384,6 @@ async def answer_with_rag(
         response_data = {"answer": answer, "citations": citations}
 
     # Evaluate overall response confidence flag
-    # If there are citations, we average their distance, otherwise it is low.
     if response_data["citations"]:
         avg_distance = sum(c["distance"] for c in response_data["citations"]) / len(
             response_data["citations"]

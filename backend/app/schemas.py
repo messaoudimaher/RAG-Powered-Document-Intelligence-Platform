@@ -61,6 +61,7 @@ class QueryRequest(BaseModel):
     limit: int = Field(
         default=5, ge=1, le=20, description="Max number of citation passages to retrieve"
     )
+    rerank: bool = Field(default=False, description="Enable Cross-Encoder query re-ranking")
 
 
 class SourceCitation(BaseModel):
