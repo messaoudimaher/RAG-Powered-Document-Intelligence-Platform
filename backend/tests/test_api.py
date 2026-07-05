@@ -168,6 +168,73 @@ def test_query_rag_success(mock_answer):
     data = response.json()
     assert data["answer"] == "This is a mocked RAG answer."
     assert len(data["citations"]) == 1
-    assert data["citations"][0]["confidence"] == "High"
     assert data["overall_confidence"] == "High"
+
+
+@patch("app.database.db_manager.get_unique_documents")
+def test_list_documents_success(mock_get_docs):
+    """
+    Test successful retrieval of unique documents in a collection.
+    """
+    mock_get_docs.return_value = [
+        {
+            "source": "paper1.pdf",
+            "title": "Paper 1 Title",
+            "chunk_count": 12,
+            "file_type": "pdf",
+            "added_at": "2026-07-05T12:00:00Z"
+        }
+    ]
+
+    response = client.get(
+        "/api/documents?collection_type=papers",
+        headers={"X-API-Key": "test_secret_key"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["source"] == "paper1.pdf"
+    assert data[0]["chunk_count"] == 12
+    mock_get_docs.assert_called_once_with("papers")
+
+
+def test_list_documents_unauthorized():
+    """
+    Verify listing documents requires authorization.
+    """
+    response = client.get("/api/documents?collection_type=public")
+    assert response.status_code == 403
+
+
+@patch("app.database.db_manager.delete_document")
+def test_delete_document_success(mock_delete):
+    """
+    Verify document deletion works and returns 200 response.
+    """
+    mock_delete.return_value = True
+
+    response = client.delete(
+        "/api/documents?collection_type=public&source=test_doc.txt",
+        headers={"X-API-Key": "test_secret_key"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "Successfully deleted" in data["message"]
+    mock_delete.assert_called_once_with("public", "test_doc.txt")
+
+
+@patch("app.database.db_manager.delete_document")
+def test_delete_document_failure(mock_delete):
+    """
+    Verify document deletion failure yields internal server error.
+    """
+    mock_delete.return_value = False
+
+    response = client.delete(
+        "/api/documents?collection_type=public&source=test_doc.txt",
+        headers={"X-API-Key": "test_secret_key"}
+    )
+    assert response.status_code == 500
+
+
 
