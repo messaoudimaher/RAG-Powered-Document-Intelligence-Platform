@@ -12,16 +12,15 @@ services:
       - ./backend/data:/app/data
     environment:
       - SEED_SAMPLE_DOCS=true
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=http://ollama:11434
       - RELEVANCE_THRESHOLD=0.35
       - API_KEY=
       - GEMINI_API_KEY=
       - CHROMA_SERVER_HOST=chromadb
       - CHROMA_SERVER_PORT=8000
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       - chromadb
+      - ollama
     restart: unless-stopped
 
   frontend:
@@ -68,3 +67,31 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.1.48
+    container_name: cogniflow_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./backend/data/ollama:/root/.ollama
+    restart: unless-stopped
+
+  ollama-setup:
+    image: ollama/ollama:0.1.48
+    container_name: cogniflow_ollama_setup
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: [ "/bin/sh", "-c" ]
+    command: >
+      "
+      echo 'Waiting for Ollama service...' &&
+      until curl -s http://ollama:11434/api/tags > /dev/null; do sleep 2; done &&
+      echo 'Pulling nomic-embed-text model...' &&
+      ollama pull nomic-embed-text &&
+      echo 'Pulling llama3.2 model...' &&
+      ollama pull llama3.2 &&
+      echo 'Models initialization complete!'
+      "
