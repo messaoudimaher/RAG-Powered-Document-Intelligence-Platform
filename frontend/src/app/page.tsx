@@ -1,29 +1,58 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   Terminal, 
   Cpu, 
   Layers, 
   ShieldAlert,
-  Heart
+  Heart,
+  LogOut,
+  User
 } from 'lucide-react';
 import Diagnostics from '../components/Diagnostics';
 import Sidebar from '../components/Sidebar';
 import IngestPanel from '../components/IngestPanel';
 import QueryWorkspace from '../components/QueryWorkspace';
+import AuthOverlay from '../components/AuthOverlay';
+import { getToken, getUsername, setToken, setUsername } from '../utils/api';
 
 export default function Home() {
   const [activeCollection, setActiveCollection] = useState<'public' | 'papers'>('public');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    setIsAuthenticated(!!getToken());
+    setCheckingAuth(false);
+  }, []);
 
   const triggerRefresh = () => {
     setRefreshTrigger(prev => prev + 1);
   };
 
+  const handleLogout = () => {
+    setToken('');
+    setUsername('');
+    setIsAuthenticated(false);
+  };
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-[#06070a] flex items-center justify-center text-zinc-500 font-mono text-xs">
+        CogniFlow: Verifying session guards...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AuthOverlay onAuthSuccess={() => setIsAuthenticated(true)} />;
+  }
+
   return (
-    <div className="min-h-screen bg-[#08090d] text-zinc-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-[#08090d] text-zinc-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white animate-fade-in">
       {/* Premium Top Navigation Bar */}
       <header className="border-b border-zinc-900 bg-zinc-950/40 backdrop-blur-md sticky top-0 z-40 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3.5">
@@ -43,11 +72,25 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Global indicator chips */}
+        {/* Global indicator chips and User Controls */}
         <div className="flex items-center gap-4 text-xs">
-          <div className="flex items-center gap-2 text-zinc-400 bg-zinc-900/40 border border-zinc-800/80 px-3 py-1.5 rounded-full">
+          <div className="hidden sm:flex items-center gap-2 text-zinc-400 bg-zinc-900/40 border border-zinc-800/80 px-3 py-1.5 rounded-full">
             <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-ping" />
             <span className="font-medium text-[11px] text-zinc-300">Cluster Status: Online</span>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-zinc-400 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-xl font-mono text-[11px]">
+              <User className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{getUsername()}</span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white px-3 py-1.5 rounded-xl border border-zinc-800 hover:border-zinc-700 text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <LogOut className="w-3.5 h-3.5 text-zinc-500" />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
       </header>

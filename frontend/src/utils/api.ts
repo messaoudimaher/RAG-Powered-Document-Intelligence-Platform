@@ -8,7 +8,8 @@ import {
 } from '../types';
 
 const LOCAL_STORAGE_BASE_URL_KEY = 'cogniflow_api_base_url';
-const LOCAL_STORAGE_API_KEY_KEY = 'cogniflow_api_key';
+const LOCAL_STORAGE_TOKEN_KEY = 'cogniflow_token';
+const LOCAL_STORAGE_USERNAME_KEY = 'cogniflow_username';
 const DEFAULT_API_BASE_URL = 'http://localhost:8000';
 
 export function getApiBaseUrl(): string {
@@ -24,27 +25,40 @@ export function setApiBaseUrl(url: string): void {
   }
 }
 
-export function getApiKey(): string {
+export function getToken(): string {
   if (typeof window !== 'undefined') {
-    return window.localStorage.getItem(LOCAL_STORAGE_API_KEY_KEY) || '';
+    return window.localStorage.getItem(LOCAL_STORAGE_TOKEN_KEY) || '';
   }
   return '';
 }
 
-export function setApiKey(key: string): void {
+export function setToken(token: string): void {
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem(LOCAL_STORAGE_API_KEY_KEY, key);
+    window.localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, token);
+  }
+}
+
+export function getUsername(): string {
+  if (typeof window !== 'undefined') {
+    return window.localStorage.getItem(LOCAL_STORAGE_USERNAME_KEY) || '';
+  }
+  return '';
+}
+
+export function setUsername(username: string): void {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(LOCAL_STORAGE_USERNAME_KEY, username);
   }
 }
 
 // Helper to make fetch requests with auth headers and error handling
 async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T> {
   const baseUrl = getApiBaseUrl().replace(/\/$/, '');
-  const apiKey = getApiKey();
+  const token = getToken();
   
   const headers = new Headers(options.headers || {});
-  if (apiKey) {
-    headers.set('X-API-Key', apiKey);
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
   }
   if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
@@ -54,6 +68,14 @@ async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T>
     ...options,
     headers,
   });
+
+  if (response.status === 401) {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+      window.localStorage.removeItem(LOCAL_STORAGE_USERNAME_KEY);
+      window.location.reload();
+    }
+  }
 
   if (!response.ok) {
     let errorMessage = `HTTP error ${response.status}`;
@@ -72,6 +94,20 @@ async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T>
 export const api = {
   async getDiagnostics(): Promise<DiagnosticsResponse> {
     return fetchJson<DiagnosticsResponse>('/api/diagnostics');
+  },
+
+  async register(username: string, password: string): Promise<any> {
+    return fetchJson<any>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+  },
+
+  async login(username: string, password: string): Promise<{ access_token: string; token_type: string; username: string }> {
+    return fetchJson<{ access_token: string; token_type: string; username: string }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
   },
 
   async queryRag(payload: {
