@@ -1,4 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime, timedelta
+import jwt
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,6 +18,18 @@ def configure_test_env():
     settings.api_key = "test_secret_key"
     settings.seed_sample_docs = False
     yield
+
+@pytest.fixture
+def auth_headers():
+    """
+    Generates valid authorization headers for test_user.
+    """
+    token = jwt.encode(
+        {"sub": "test_user", "exp": datetime.utcnow() + timedelta(hours=1)},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 def test_root_redirect():
     """
@@ -67,15 +81,15 @@ def test_readiness_degraded(mock_httpx_get, mock_get_stats):
 
 def test_diagnostics_unauthorized():
     """
-    Test diagnostics fails without X-API-Key header.
+    Test diagnostics fails without JWT auth.
     """
     response = client.get("/api/diagnostics")
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 @patch("httpx.AsyncClient.get")
-def test_diagnostics_authorized(mock_httpx_get):
+def test_diagnostics_authorized(mock_httpx_get, auth_headers):
     """
-    Test diagnostics succeeds with correct X-API-Key.
+    Test diagnostics succeeds with correct JWT token.
     """
     # Mock Ollama status call
     mock_resp = MagicMock()
@@ -84,16 +98,16 @@ def test_diagnostics_authorized(mock_httpx_get):
 
     with patch("app.database.db_manager.get_stats") as mock_stats:
         mock_stats.return_value = {"public_count": 10, "papers_count": 5}
-        response = client.get("/api/diagnostics", headers={"X-API-Key": "test_secret_key"})
+        response = client.get("/api/diagnostics", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
         assert data["public_count"] == 10
         assert data["papers_count"] == 5
         assert data["threshold"] == settings.relevance_threshold
+        mock_stats.assert_called_once_with("test_user")
 
-@patch("app.main.ingest_document")
-def test_ingest_file_unauthorized(mock_ingest):
+def test_ingest_file_unauthorized():
     """
     Test file ingestion blocks unauthorized requests.
     """
@@ -102,35 +116,31 @@ def test_ingest_file_unauthorized(mock_ingest):
         data={"collection_type": "public"},
         files={"file": ("test.txt", b"dummy content", "text/plain")}
     )
-    assert response.status_code == 403
+    assert response.status_code == 401
 
-@patch("app.main.ingest_document", new_callable=AsyncMock)
-def test_ingest_file_success(mock_ingest):
+@patch("app.main.ingest_file_task.delay")
+def test_ingest_file_success(mock_ingest_task, auth_headers):
     """
     Test successful file ingestion.
     """
-    mock_ingest.return_value = {
-        "source": "test.txt",
-        "title": "test.txt",
-        "chunks_count": 3,
-        "file_type": "txt",
-        "status": "success"
-    }
+    mock_task = MagicMock()
+    mock_task.id = "mock_task_id"
+    mock_ingest_task.return_value = mock_task
 
     response = client.post(
         "/api/ingest",
-        headers={"X-API-Key": "test_secret_key"},
+        headers=auth_headers,
         data={"collection_type": "public"},
         files={"file": ("test.txt", b"dummy content", "text/plain")}
     )
     assert response.status_code == 200
     data = response.json()
     assert data["source"] == "test.txt"
-    assert data["chunks_count"] == 3
-    assert data["status"] == "success"
+    assert data["task_id"] == "mock_task_id"
+    assert data["status"] == "processing"
 
 @patch("app.main.answer_with_rag", new_callable=AsyncMock)
-def test_query_rag_success(mock_answer):
+def test_query_rag_success(mock_answer, auth_headers):
     """
     Test successful RAG query endpoint.
     """
@@ -161,7 +171,7 @@ def test_query_rag_success(mock_answer):
 
     response = client.post(
         "/api/query",
-        headers={"X-API-Key": "test_secret_key"},
+        headers=auth_headers,
         json=payload
     )
     assert response.status_code == 200
@@ -169,10 +179,17 @@ def test_query_rag_success(mock_answer):
     assert data["answer"] == "This is a mocked RAG answer."
     assert len(data["citations"]) == 1
     assert data["overall_confidence"] == "High"
-
+    mock_answer.assert_called_once_with(
+        collection_type="public",
+        query="What is the answer?",
+        strategy="baseline",
+        limit=3,
+        rerank=False,
+        username="test_user"
+    )
 
 @patch("app.database.db_manager.get_unique_documents")
-def test_list_documents_success(mock_get_docs):
+def test_list_documents_success(mock_get_docs, auth_headers):
     """
     Test successful retrieval of unique documents in a collection.
     """
@@ -188,26 +205,24 @@ def test_list_documents_success(mock_get_docs):
 
     response = client.get(
         "/api/documents?collection_type=papers",
-        headers={"X-API-Key": "test_secret_key"}
+        headers=auth_headers
     )
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
     assert data[0]["source"] == "paper1.pdf"
     assert data[0]["chunk_count"] == 12
-    mock_get_docs.assert_called_once_with("papers")
-
+    mock_get_docs.assert_called_once_with("papers", "test_user")
 
 def test_list_documents_unauthorized():
     """
     Verify listing documents requires authorization.
     """
     response = client.get("/api/documents?collection_type=public")
-    assert response.status_code == 403
-
+    assert response.status_code == 401
 
 @patch("app.database.db_manager.delete_document")
-def test_delete_document_success(mock_delete):
+def test_delete_document_success(mock_delete, auth_headers):
     """
     Verify document deletion works and returns 200 response.
     """
@@ -215,16 +230,15 @@ def test_delete_document_success(mock_delete):
 
     response = client.delete(
         "/api/documents?collection_type=public&source=test_doc.txt",
-        headers={"X-API-Key": "test_secret_key"}
+        headers=auth_headers
     )
     assert response.status_code == 200
     data = response.json()
     assert "Successfully deleted" in data["message"]
-    mock_delete.assert_called_once_with("public", "test_doc.txt")
-
+    mock_delete.assert_called_once_with("public", "test_doc.txt", "test_user")
 
 @patch("app.database.db_manager.delete_document")
-def test_delete_document_failure(mock_delete):
+def test_delete_document_failure(mock_delete, auth_headers):
     """
     Verify document deletion failure yields internal server error.
     """
@@ -232,26 +246,18 @@ def test_delete_document_failure(mock_delete):
 
     response = client.delete(
         "/api/documents?collection_type=public&source=test_doc.txt",
-        headers={"X-API-Key": "test_secret_key"}
+        headers=auth_headers
     )
     assert response.status_code == 500
 
-
-
-@patch("app.main.fetch_arxiv_paper", new_callable=AsyncMock)
-@patch("app.main.ingest_document", new_callable=AsyncMock)
-def test_ingest_arxiv_success(mock_ingest, mock_fetch):
+@patch("app.main.ingest_arxiv_task.delay")
+def test_ingest_arxiv_success(mock_ingest_task, auth_headers):
     """
     Verify successful arXiv ingestion.
     """
-    mock_fetch.return_value = ("Test Arxiv Title", b"fake pdf bytes")
-    mock_ingest.return_value = {
-        "source": "arxiv_2305.16300.pdf",
-        "title": "Test Arxiv Title",
-        "chunks_count": 8,
-        "file_type": "pdf",
-        "status": "success"
-    }
+    mock_task = MagicMock()
+    mock_task.id = "mock_task_id"
+    mock_ingest_task.return_value = mock_task
 
     payload = {
         "arxiv_id": "2305.16300",
@@ -260,17 +266,15 @@ def test_ingest_arxiv_success(mock_ingest, mock_fetch):
 
     response = client.post(
         "/api/ingest/arxiv",
-        headers={"X-API-Key": "test_secret_key"},
+        headers=auth_headers,
         json=payload
     )
     assert response.status_code == 200
     data = response.json()
     assert data["source"] == "arxiv_2305.16300.pdf"
-    assert data["chunks_count"] == 8
-    assert data["status"] == "success"
-    mock_fetch.assert_called_once_with("2305.16300")
-    mock_ingest.assert_called_once()
-
+    assert data["task_id"] == "mock_task_id"
+    assert data["status"] == "processing"
+    mock_ingest_task.assert_called_once_with("papers", "2305.16300", "test_user")
 
 def test_ingest_arxiv_unauthorized():
     """
@@ -281,4 +285,4 @@ def test_ingest_arxiv_unauthorized():
         "collection_type": "papers"
     }
     response = client.post("/api/ingest/arxiv", json=payload)
-    assert response.status_code == 403
+    assert response.status_code == 401
