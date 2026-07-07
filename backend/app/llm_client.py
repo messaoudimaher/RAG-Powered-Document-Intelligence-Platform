@@ -15,9 +15,12 @@ class LLMClient:
     """
 
     def __init__(self):
-        # We use a persistent async HTTPX client to reuse TCP connections.
-        # We increase the timeouts for local LLMs which can be slow.
-        self.timeout = httpx.Timeout(60.0, connect=5.0)
+        # Ollama generation for large RAG contexts (100+ chunks) can take several minutes.
+        # 300s read timeout prevents spurious failures on long prompts.
+        # OLLAMA_TIMEOUT env var can override this (default: 300s).
+        import os
+        llm_timeout = float(os.environ.get("OLLAMA_TIMEOUT", "300"))
+        self.timeout = httpx.Timeout(llm_timeout, connect=10.0)
 
     async def _post_with_retry(
         self,
@@ -38,9 +41,9 @@ class LLMClient:
                 )
                 response.raise_for_status()
                 return response
-            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+            except (httpx.HTTPStatusError, httpx.RequestError, httpx.ReadTimeout) as e:
                 logger.warning(
-                    f"HTTP request failed on attempt {attempt + 1}/{max_retries} for URL {url}: {e}"
+                    f"HTTP request failed on attempt {attempt + 1}/{max_retries} for URL {url}: {type(e).__name__}: {e}"
                 )
                 if attempt == max_retries - 1:
                     raise

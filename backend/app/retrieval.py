@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 
@@ -18,7 +19,25 @@ def get_reranker():
 
         logger.info(f"Loading Cross-Encoder reranker model '{settings.reranker_model}'...")
         _reranker_model = CrossEncoder(settings.reranker_model)
+        logger.info("Cross-Encoder reranker model loaded.")
     return _reranker_model
+
+
+async def rerank_citations(query: str, citations: list, limit: int) -> list:
+    """Run CPU-bound CrossEncoder.predict() in a thread pool to avoid blocking
+    the asyncio event loop (model download + inference can take minutes)."""
+    loop = asyncio.get_event_loop()
+
+    def _load_and_predict():
+        reranker = get_reranker()
+        pairs = [(query, c["text"]) for c in citations]
+        return reranker.predict(pairs).tolist()
+
+    scores = await loop.run_in_executor(None, _load_and_predict)
+    for c, score in zip(citations, scores):
+        c["rerank_score"] = score
+    citations.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
+    return citations[:limit]
 
 
 def calculate_confidence(distance: float) -> str:
@@ -355,20 +374,10 @@ async def answer_with_rag(
         else:  # baseline
             citations = await retrieve_baseline(collection_type, query, fetch_limit, username=username)
 
-        # 2. Perform Cross-Encoder re-ranking if requested
+        # 2. Perform Cross-Encoder re-ranking if requested (offloaded to thread pool)
         if rerank and citations:
             try:
-                reranker = get_reranker()
-                pairs = [(query, c["text"]) for c in citations]
-                scores = reranker.predict(pairs).tolist()
-                for c, score in zip(citations, scores):
-                    c["rerank_score"] = score
-                
-                # Sort by rerank score descending
-                citations.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
-                
-                # Slice back to original user-specified limit
-                citations = citations[:limit]
+                citations = await rerank_citations(query, citations, limit)
             except Exception as e:
                 logger.error(f"Error during Cross-Encoder re-ranking: {e}. Falling back to default order.")
                 citations = citations[:limit]
