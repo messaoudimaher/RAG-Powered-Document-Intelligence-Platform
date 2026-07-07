@@ -61,7 +61,6 @@ class LLMClient:
             return []
 
         async with httpx.AsyncClient() as client:
-            # 1. Try batch embed endpoint first (/api/embed)
             embed_url = f"{settings.ollama_base_url.rstrip('/')}/api/embed"
             try:
                 payload = {"model": settings.ollama_embed_model, "input": texts}
@@ -74,7 +73,6 @@ class LLMClient:
                     f"Batch embedding endpoint (/api/embed) failed, falling back to sequential: {e}"
                 )
 
-            # 2. Fallback to older /api/embeddings in parallel
             embeddings_url = f"{settings.ollama_base_url.rstrip('/')}/api/embeddings"
 
             async def embed_single(text: str) -> list[float]:
@@ -82,7 +80,6 @@ class LLMClient:
                 resp = await self._post_with_retry(client, embeddings_url, payload)
                 return resp.json()["embedding"]
 
-            # Run concurrently
             tasks = [embed_single(text) for text in texts]
             results = await asyncio.gather(*tasks)
             return list(results)
@@ -94,12 +91,10 @@ class LLMClient:
         Generates completions. Uses Gemini API (gemini-2.5-flash) if GEMINI_API_KEY
         is provided, otherwise falls back to local Ollama (settings.ollama_llm_model).
         """
-        # System instructions formatting helper
         formatted_prompt = prompt
         if system_prompt:
             formatted_prompt = f"{system_prompt}\n\nUser Question:\n{prompt}"
 
-        # Case A: Gemini API is configured
         if settings.gemini_api_key:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}"
             payload = {
@@ -112,14 +107,11 @@ class LLMClient:
                 async with httpx.AsyncClient() as client:
                     response = await self._post_with_retry(client, url, payload, headers=headers)
                     data = response.json()
-                    # Parse candidates
                     text_out = data["candidates"][0]["content"]["parts"][0]["text"]
                     return text_out.strip()
             except Exception as e:
                 logger.error(f"Gemini API completion failed: {e}. Falling back to Ollama.")
-                # Fallback to Ollama if Gemini API fails
 
-        # Case B: Local Ollama
         ollama_url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
         messages = []
         if system_prompt:
@@ -143,5 +135,4 @@ class LLMClient:
                 raise RuntimeError(f"All LLM generation providers failed: {e}") from e
 
 
-# Global singleton
 llm_client = LLMClient()

@@ -360,21 +360,17 @@ async def answer_with_rag(
     strategy_clean = strategy.lower().strip()
 
     if strategy_clean == "flare":
-        # FLARE handles generation and retrieval iteratively in the function
         response_data = await retrieve_flare(collection_type, query, limit, username=username)
     else:
-        # For standard strategies, determine retrieval limit (retrieve more if re-ranking is enabled)
         fetch_limit = max(2 * limit, 10) if rerank else limit
 
-        # 1. Fetch relevant passages based on strategy
         if strategy_clean == "hyde":
             citations = await retrieve_hyde(collection_type, query, fetch_limit, username=username)
         elif strategy_clean == "multi_query":
             citations = await retrieve_multi_query_rrf(collection_type, query, fetch_limit, username=username)
-        else:  # baseline
+        else:
             citations = await retrieve_baseline(collection_type, query, fetch_limit, username=username)
 
-        # 2. Perform Cross-Encoder re-ranking if requested (offloaded to thread pool)
         if rerank and citations:
             try:
                 citations = await rerank_citations(query, citations, limit)
@@ -382,7 +378,6 @@ async def answer_with_rag(
                 logger.error(f"Error during Cross-Encoder re-ranking: {e}. Falling back to default order.")
                 citations = citations[:limit]
 
-        # 3. Generate answer using top re-ranked citations
         context = "\n\n".join([f"Source: {c['source']}\n{c['text']}" for c in citations])
         system_prompt = "You are a highly analytical assistant. Answer the user question based strictly on the provided context."
         answer = await llm_client.generate_completion(
@@ -392,7 +387,6 @@ async def answer_with_rag(
         )
         response_data = {"answer": answer, "citations": citations}
 
-    # Evaluate overall response confidence flag
     if response_data["citations"]:
         avg_distance = sum(c["distance"] for c in response_data["citations"]) / len(
             response_data["citations"]
