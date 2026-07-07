@@ -3,7 +3,7 @@
 CogniFlow is a secure, local-first Multi-Tenant Retrieval-Augmented Generation (RAG) platform. It parses documents (PDF, DOCX, TXT, MD), indexes them using local embeddings with Ollama, stores them in ChromaDB, and performs high-reasoning query synthesis using a customizable switchboard of either local LLMs or optional cloud APIs.
 
 The system features two user clients:
-1. **Next.js 15 Dashboard**: A premium, dark-themed, glassmorphic operations console displaying real-time server diagnostics, document libraries, search expansion strategy selectors, real-time ingestion status trackers, and citation previews.
+1. **Next.js 16 Dashboard**: A premium, dark-themed, glassmorphic operations console displaying real-time server diagnostics, document libraries, search expansion strategy selectors, real-time ingestion status trackers, and citation previews.
 2. **Streamlit companion client**: A lightweight operational UI cockpit.
 
 ---
@@ -13,7 +13,7 @@ The system features two user clients:
 ```mermaid
 graph TD
     subgraph Frontend Clients
-        NextJS["Next.js 15 Dashboard<br>(Port 3000)"]
+        NextJS["Next.js 16 Dashboard<br>(Port 3000)"]
         Streamlit["Streamlit Client<br>(Port 8501)"]
     end
 
@@ -66,8 +66,8 @@ graph TD
    ollama pull llama3.2
    ```
 2. **Redis Server**: A running Redis instance for Celery task dispatching.
-3. **Node.js 18+** (for Next.js frontend).
-4. **Python 3.10 - 3.12** (for FastAPI backend & Streamlit).
+3. **Node.js 20+** (for Next.js 16 frontend).
+4. **Python 3.11 - 3.12** (for FastAPI backend & Streamlit).
 
 ---
 
@@ -121,7 +121,7 @@ streamlit run streamlit_app.py
 To build and run the entire multi-tenant infrastructure stack (Web App, Next.js, Streamlit, Celery worker pool, Redis task broker, Standalone ChromaDB, and self-contained auto-downloading Ollama service) in one command:
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 - **Next.js Dashboard**: [http://localhost:3000](http://localhost:3000)
