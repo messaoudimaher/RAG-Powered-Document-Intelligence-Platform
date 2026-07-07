@@ -70,7 +70,7 @@ async function fetchJson<T>(path: string, options: RequestInit = {}): Promise<T>
   const baseUrl = getApiBaseUrl().replace(/\/$/, '');
   const token = getToken();
   const apiKey = getApiKey();
-  
+
   const headers = new Headers(options.headers || {});
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
